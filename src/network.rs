@@ -12,44 +12,55 @@ pub trait Network<const NI: usize, const NO: usize> {
         alpha: Float,
         training_data: &[([Float; NI], [Float; NO])],
     ) {
+        let align = iterations.ilog10() as usize;
         for i in 0..iterations {
             let mut error = 0.0;
             for &(inputs, targets) in training_data.iter() {
                 let outputs = self.forward(inputs);
                 if i % (iterations / 10) == 0 {
-                    println!("{outputs:?}");
+                    print!("{outputs:?} ");
                 }
-                let delta = std::array::from_fn(|i| outputs[i] - targets[i]);
+                let normalization = (2.0 * NO as Float).recip();
+                let delta = std::array::from_fn(|i| normalization * (outputs[i] - targets[i]));
                 error += delta.iter().map(|d| d * d).sum::<Float>();
                 self.update_gradient(1.0, delta);
                 self.apply_gradient(alpha);
             }
             if i % (iterations / 10) == 0 {
-                println!("{i:>10}: {error}");
+                println!("\n{i:<align$}: error = {:.1e}", error.sqrt());
             }
         }
     }
 }
 
-#[derive(Copy, Clone)]
-pub enum Activation {
-    Relu,
-    Sigmoid(Float),
+pub trait Activation {
+    fn apply(x: Float) -> Float;
+    fn derivative(x: Float) -> Float;
 }
 
-impl Activation {
+#[derive(Copy, Clone, Default, Debug)]
+pub enum Activations {
+    #[default]
+    Id,
+    Relu,
+    Sigmoid,
+}
+
+impl Activations {
     fn apply(&self, input: Float) -> Float {
-        use Activation::*;
+        use Activations::*;
         match self {
+            Id => input,
             Relu => input.max(0.0),
-            Sigmoid(lambda) => (1.0 + (-input * lambda).exp()).recip(),
+            Sigmoid => (1.0 + (-input).exp()).recip(),
         }
     }
     fn derivative(&self, input: Float) -> Float {
-        use Activation::*;
+        use Activations::*;
         match self {
+            Id => 1.0,
             Relu => input.signum().max(0.0),
-            Sigmoid(..) => {
+            Sigmoid => {
                 let sig = self.apply(input);
                 sig * (1.0 - sig)
             }
@@ -58,7 +69,8 @@ impl Activation {
 }
 
 pub struct Layer<const NI: usize, const NO: usize> {
-    weights: [([Float; NI], Activation); NO],
+    // TODO: put the activation function as a generic for the entire Layer
+    weights: [([Float; NI], Activations); NO],
     gradient: [[Float; NI]; NO],
     activations: [Float; NO],
     inputs: [Float; NI],
@@ -67,7 +79,7 @@ pub struct Layer<const NI: usize, const NO: usize> {
 impl<const NI: usize, const NO: usize> Default for Layer<NI, NO> {
     fn default() -> Self {
         Self {
-            weights: [([0.0; NI], Activation::Relu); NO],
+            weights: [([1e-3; NI], Activations::Id); NO], // WARNING: this 1e-3 should be a random number
             gradient: [[0.0; NI]; NO],
             activations: [0.0; NO],
             inputs: [0.0; NI],
@@ -83,7 +95,7 @@ impl<const NI: usize, const NO: usize> Network<NI, NO> for Layer<NI, NO> {
             self.activations[o] = ws
                 .iter()
                 .zip(input.iter())
-                .map(|(&a, &b)| a + b)
+                .map(|(&a, &b)| a * b)
                 .fold(0.0, |acc, x| acc + x);
             activation.apply(self.activations[o])
         })
