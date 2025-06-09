@@ -1,10 +1,10 @@
-use reinforcement::network::{Layer, Layers, Network};
+use reinforcement::network::{LS, Layer, Layers, Network};
 
 fn add() {
-    let mut net: Layers<2, 3, 1, Layer<3, 1>> = Default::default();
+    let mut net: Layers<2, 3, Layer<3, 1>> = Default::default();
     net.train(
-        10000,
-        1e-3,
+        1000,
+        1e-2,
         &[
             ([0.0, 0.0], [0.0]),
             ([0.0, 1.0], [1.0]),
@@ -17,10 +17,10 @@ fn add() {
 }
 
 fn xor() {
-    let mut net: Layers<2, 2, 1, Layers<2, 2, 1, Layer<2, 1>>> = Default::default();
+    let mut net: LS<2, 2, Layer<2, 1>> = Default::default();
     net.train(
-        100000,
-        1e-2,
+        100,
+        1e-1,
         &[
             ([0.0, 0.0], [0.0]),
             ([0.0, 1.0], [1.0]),

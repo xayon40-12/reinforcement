@@ -1,6 +1,8 @@
 pub type Float = f64;
 
-pub trait Network<const NI: usize, const NO: usize> {
+pub trait JoinNetwork<const NI: usize> {}
+
+pub trait Network<const NI: usize, const NO: usize>: JoinNetwork<NI> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO];
     /// The parameter $r$ is the ratio $0 < r <= 1$ for the relaxation of the update of the gradient. A value of $r = 1$ correspond to keep only the new value of the gradient, whereas $r = 0.5$ will average the new and last value.
     fn update_gradient(&mut self, r: Float, delta: [Float; NO]) -> [Float; NI];
@@ -79,7 +81,7 @@ pub struct Layer<const NI: usize, const NO: usize> {
 impl<const NI: usize, const NO: usize> Default for Layer<NI, NO> {
     fn default() -> Self {
         Self {
-            weights: [([1e-3; NI], Activations::Id); NO], // WARNING: this 1e-3 should be a random number
+            weights: [([1e-1; NI], Activations::Id); NO], // WARNING: this 1e-3 should be a random number
             gradient: [[0.0; NI]; NO],
             activations: [0.0; NO],
             inputs: [0.0; NI],
@@ -87,6 +89,7 @@ impl<const NI: usize, const NO: usize> Default for Layer<NI, NO> {
     }
 }
 
+impl<const NI: usize, const NO: usize> JoinNetwork<NI> for Layer<NI, NO> {}
 impl<const NI: usize, const NO: usize> Network<NI, NO> for Layer<NI, NO> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
         self.inputs = input;
@@ -128,13 +131,15 @@ impl<const NI: usize, const NO: usize> Network<NI, NO> for Layer<NI, NO> {
 }
 
 #[derive(Default)]
-pub struct Layers<const NI: usize, const NH: usize, const NO: usize, O: Network<NH, NO>> {
+pub struct Layers<const NI: usize, const NH: usize, O: JoinNetwork<NH>> {
     layer_in: Layer<NI, NH>,
     layer_out: O,
 }
+pub type LS<const NI: usize, const NH: usize, O> = Layers<NI, NH, O>;
 
+impl<const NI: usize, const NH: usize, O: JoinNetwork<NH>> JoinNetwork<NI> for Layers<NI, NH, O> {}
 impl<const NI: usize, const NH: usize, const NO: usize, O: Network<NH, NO>> Network<NI, NO>
-    for Layers<NI, NH, NO, O>
+    for Layers<NI, NH, O>
 {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
         self.layer_out.forward(self.layer_in.forward(input))
