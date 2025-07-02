@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 rand = "0.9.1"
+array_vector_space = {git = "https://github.com/xayon40-12/array_vector_space.git"}

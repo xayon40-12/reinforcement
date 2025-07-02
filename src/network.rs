@@ -1,4 +1,7 @@
+use std::ops::RangeInclusive;
+
 use activation::Activation;
+use array_vector_space::ArrayVectorSpace;
 use rand::Rng;
 
 pub mod activation;
@@ -6,7 +9,9 @@ pub mod reinforcement;
 
 pub type Float = f64;
 
-pub trait JoinNetwork<const NI: usize> {}
+pub trait JoinNetwork<const NI: usize> {
+    type OutA: Activation;
+}
 pub trait ForwardNetwork<const NI: usize, const NO: usize>: JoinNetwork<NI> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO];
 }
@@ -16,6 +21,11 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
     fn update_gradient(&mut self, r: Float, delta: [Float; NO]) -> [Float; NI];
     fn reset_gradient(&mut self);
     fn apply_gradient(&mut self, alpha: Float);
+    fn rescale_gradient(&mut self, a: Float);
+    fn norm2_gradient(&self) -> Float;
+    fn normalize_gradient(&mut self) {
+        self.rescale_gradient(self.norm2_gradient().sqrt().recip());
+    }
     fn train(
         &mut self,
         iterations: usize,
@@ -34,6 +44,7 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
                 let delta = std::array::from_fn(|i| normalization * (targets[i] - outputs[i]));
                 error += delta.iter().map(|d| d * d).sum::<Float>();
                 self.update_gradient(1.0, delta);
+                self.normalize_gradient();
                 self.apply_gradient(alpha);
             }
             if i % (iterations / 10) == 0 {
@@ -41,6 +52,7 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
             }
         }
     }
+    fn output_ranges(&self) -> [RangeInclusive<Float>; NO];
 }
 
 pub struct Layer<const NI: usize, const NO: usize, A: Activation> {
@@ -64,7 +76,9 @@ impl<const NI: usize, const NO: usize, A: Activation> Default for Layer<NI, NO, 
     }
 }
 
-impl<const NI: usize, const NO: usize, A: Activation> JoinNetwork<NI> for Layer<NI, NO, A> {}
+impl<const NI: usize, const NO: usize, A: Activation> JoinNetwork<NI> for Layer<NI, NO, A> {
+    type OutA = A;
+}
 impl<const NI: usize, const NO: usize, A: Activation> ForwardNetwork<NI, NO> for Layer<NI, NO, A> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
         self.inputs = input;
@@ -113,6 +127,15 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
                     .for_each(|(w, g)| *w += alpha * *g)
             });
     }
+    fn rescale_gradient(&mut self, a: Float) {
+        self.gradient.scal_mul(a);
+    }
+    fn norm2_gradient(&self) -> Float {
+        self.gradient.norm2()
+    }
+    fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
+        self.weights.map(|(_, a)| a.range())
+    }
 }
 
 #[derive(Default)]
@@ -125,6 +148,7 @@ pub type LS<const NI: usize, const NH: usize, A, O> = Layers<NI, NH, A, O>;
 impl<const NI: usize, const NH: usize, A: Activation, O: JoinNetwork<NH>> JoinNetwork<NI>
     for Layers<NI, NH, A, O>
 {
+    type OutA = O::OutA;
 }
 impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Network<NH, NO>>
     ForwardNetwork<NI, NO> for Layers<NI, NH, A, O>
@@ -152,60 +176,14 @@ impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Networ
         self.layer_in.apply_gradient(alpha);
         self.layer_out.apply_gradient(alpha);
     }
-}
-
-#[derive(Default)]
-pub struct Reinforcement<const NI: usize, const NO: usize, N: Network<NI, NO>> {
-    network: N,
-    r: Float,
-}
-impl<const NI: usize, const NO: usize, N: Network<NI, NO>> Reinforcement<NI, NO, N> {
-    pub fn reinforce(
-        &mut self,
-        r: Float,
-        mut f: impl FnMut(&mut dyn ForwardNetwork<NI, NO>) -> Option<Float>,
-    ) where
-        Self: Sized,
-    {
-        self.r = r;
-        loop {
-            let alpha = f(self);
-            if let Some(alpha) = alpha {
-                self.apply_gradient(alpha);
-                self.reset_gradient();
-                break;
-            }
-        }
+    fn norm2_gradient(&self) -> Float {
+        self.layer_in.norm2_gradient() + self.layer_out.norm2_gradient()
     }
-}
-impl<const NI: usize, const NO: usize, N: Network<NI, NO>> JoinNetwork<NI>
-    for Reinforcement<NI, NO, N>
-{
-}
-impl<const NI: usize, const NO: usize, N: Network<NI, NO>> ForwardNetwork<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
-    fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
-        let output = self.network.forward(input);
-        self.network.update_gradient(self.r, output);
-        output
+    fn rescale_gradient(&mut self, a: Float) {
+        self.layer_in.rescale_gradient(a);
+        self.layer_out.rescale_gradient(a);
     }
-}
-impl<const NI: usize, const NO: usize, N: Network<NI, NO>> Network<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
-    fn randomize(&mut self) {
-        self.network.randomize();
-    }
-    fn update_gradient(&mut self, r: Float, delta: [Float; NO]) -> [Float; NI] {
-        self.network.update_gradient(r, delta)
-    }
-
-    fn reset_gradient(&mut self) {
-        self.network.reset_gradient();
-    }
-
-    fn apply_gradient(&mut self, alpha: Float) {
-        self.network.apply_gradient(alpha);
+    fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
+        self.layer_out.output_ranges()
     }
 }

@@ -3,6 +3,11 @@
 version = 4
 
 [[package]]
+name = "array_vector_space"
+version = "0.1.0"
+source = "git+https://github.com/xayon40-12/array_vector_space.git#fb7f744bdefefe21022c6fe70a0b3439aaa304b4"
+
+[[package]]
 name = "bitflags"
 version = "2.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -98,6 +103,7 @@ dependencies = [
 name = "reinforcement"
 version = "0.1.0"
 dependencies = [
+ "array_vector_space",
  "rand",
 ]
 
