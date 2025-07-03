@@ -4,14 +4,8 @@ use array_vector_space::ArrayVectorSpace;
 use rand_distr::Distribution;
 
 use super::{
-    BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network, activation::BoundedActivation,
+    BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network, StochasticForwardNetwork,
 };
-
-pub trait StochasticForwardNetwork<const NI: usize, const NO: usize>:
-    JoinNetwork<NI, OutA: BoundedActivation>
-{
-    fn pert_forward(&mut self, input: [Float; NI], shape: Float) -> [Float; NO];
-}
 
 #[derive(Default)]
 pub struct Reinforcement<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> {

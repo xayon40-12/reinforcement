@@ -1,6 +1,8 @@
 use reinforcement::network::{
-    Float, Layer, Layers, Network,
+    Float, Network,
     activation::{Id, Sigmoid},
+    layer::Layer,
+    layers::Layers,
     reinforcement::Reinforcement,
 };
 
