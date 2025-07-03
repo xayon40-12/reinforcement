@@ -1,6 +1,7 @@
+use array_vector_space::ArrayVectorSpace;
 use reinforcement::network::{
     Float, Network,
-    activation::{Id, Sigmoid},
+    activation::{Id, Sigmoid, SigmoidSim},
     layer::Layer,
     layers::Layers,
     reinforcement::Reinforcement,
@@ -42,7 +43,7 @@ pub fn distance(a: [Float; 2], b: [Float; 2]) -> Float {
 }
 
 fn reinforcement() {
-    let mut net: Reinforcement<4, 2, Layer<4, 2, Sigmoid>> = Default::default();
+    let mut net: Reinforcement<4, 2, Layer<4, 2, SigmoidSim>> = Default::default();
     // let mut net: Reinforcement<4, 2, Layers<4, 10, Id, Layers<10, 10, Id, Layer<10, 2, Sigmoid>>>> =
     //     Default::default();
     net.randomize();
@@ -77,11 +78,7 @@ fn reinforcement() {
             net.reinforce(1e-3, |net| {
                 let input = [pos[0], pos[1], target[0], target[1]];
                 let output = net.pert_forward(input, shape);
-                fn to_movement(p: Float) -> Float {
-                    p * 2.0 - 1.0
-                }
-                pos[0] += to_movement(output[0]);
-                pos[1] += to_movement(output[1]);
+                *pos = pos.add(output);
                 ticks += 1;
                 if ticks > max_ticks {
                     *d = distance(*target, *pos);
