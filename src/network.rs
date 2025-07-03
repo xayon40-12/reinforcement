@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use activation::Activation;
+use activation::{Activation, BoundedActivation};
 use array_vector_space::ArrayVectorSpace;
 use rand::Rng;
 
@@ -52,6 +52,10 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
             }
         }
     }
+}
+pub trait BoundedNetwork<const NI: usize, const NO: usize>:
+    Network<NI, NO, OutA: BoundedActivation>
+{
     fn output_ranges(&self) -> [RangeInclusive<Float>; NO];
 }
 
@@ -133,6 +137,10 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
     fn norm2_gradient(&self) -> Float {
         self.gradient.norm2()
     }
+}
+impl<const NI: usize, const NO: usize, A: BoundedActivation> BoundedNetwork<NI, NO>
+    for Layer<NI, NO, A>
+{
     fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
         self.weights.map(|(_, a)| a.range())
     }
@@ -183,6 +191,10 @@ impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Networ
         self.layer_in.rescale_gradient(a);
         self.layer_out.rescale_gradient(a);
     }
+}
+impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: BoundedNetwork<NH, NO>>
+    BoundedNetwork<NI, NO> for Layers<NI, NH, A, O>
+{
     fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
         self.layer_out.output_ranges()
     }

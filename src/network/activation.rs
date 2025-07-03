@@ -5,6 +5,9 @@ use super::Float;
 pub trait Activation: Default + Copy {
     fn apply(&self, x: Float) -> Float;
     fn derivative(&self, x: Float) -> Float;
+}
+
+pub trait BoundedActivation: Activation {
     fn range(&self) -> RangeInclusive<Float>;
 }
 
@@ -17,9 +20,6 @@ impl Activation for Id {
     fn derivative(&self, _input: Float) -> Float {
         1.0
     }
-    fn range(&self) -> RangeInclusive<Float> {
-        Float::NEG_INFINITY..=Float::INFINITY
-    }
 }
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Relu;
@@ -29,9 +29,6 @@ impl Activation for Relu {
     }
     fn derivative(&self, input: Float) -> Float {
         input.signum().max(0.0)
-    }
-    fn range(&self) -> RangeInclusive<Float> {
-        0.0..=Float::INFINITY
     }
 }
 
@@ -45,6 +42,8 @@ impl Activation for SigmoidSim {
         let e = (-input).exp();
         2.0 * e / (1.0 + e).powi(2)
     }
+}
+impl BoundedActivation for SigmoidSim {
     fn range(&self) -> RangeInclusive<Float> {
         -1.0..=1.0
     }
@@ -60,6 +59,8 @@ impl Activation for Sigmoid {
         let e = (-input).exp();
         e / (1.0 + e).powi(2)
     }
+}
+impl BoundedActivation for Sigmoid {
     fn range(&self) -> RangeInclusive<Float> {
         0.0..=1.0
     }

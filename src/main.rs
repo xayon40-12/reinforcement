@@ -45,7 +45,7 @@ fn reinforcement() {
     //     Default::default();
     net.randomize();
 
-    let alpha = 1e-7;
+    let alpha = 1e-5;
     let targets = [
         [10.0 as Float, -7.0],
         [-40.0, -120.0],
@@ -54,7 +54,7 @@ fn reinforcement() {
     ];
     println!("{:?}", targets.map(|[x, y]| (x * x + y * y).sqrt()));
     let start = [0.0; 2];
-    let nb_reinforcement = 100000usize;
+    let nb_reinforcement = 1000000usize;
 
     let width = nb_reinforcement.ilog10() as usize;
     let init_distances = targets.map(|t| distance(start, t));
@@ -62,7 +62,8 @@ fn reinforcement() {
     for i in 1..nb_reinforcement {
         let mut poss = targets.map(|_| start);
         let mut d = targets.map(|_| 0.0);
-        let max_ticks = 300;
+        let max_ticks = 350;
+        let shape = 100.0;
         for ((((target, pos), d), best_distance), _init_distance) in targets
             .iter()
             .zip(poss.iter_mut())
@@ -71,11 +72,11 @@ fn reinforcement() {
             .zip(init_distances)
         {
             let mut ticks = 0;
-            net.reinforce(1e-2, |net| {
+            net.reinforce(1e-3, |net| {
                 let input = [pos[0], pos[1], target[0], target[1]];
-                let output = net.forward(input);
+                let output = net.pert_forward(input, shape);
                 fn to_movement(p: Float) -> Float {
-                    if p > 0.5 { 1.0 } else { -1.0 }
+                    p * 2.0 - 1.0
                 }
                 pos[0] += to_movement(output[0]);
                 pos[1] += to_movement(output[1]);
