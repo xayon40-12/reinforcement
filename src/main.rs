@@ -4,7 +4,7 @@ use reinforcement::network::{
     activation::{Id, Sigmoid, SigmoidSim},
     layer::Layer,
     layers::Layers,
-    reinforcement::Reinforcement,
+    reinforcement::{Reinforcement, Reward},
 };
 
 fn add() {
@@ -48,43 +48,42 @@ fn reinforcement() {
     //     Default::default();
     net.randomize();
 
-    let alpha = 1e-5;
+    let alpha = 1e-3;
+    let relaxation = 1e-3;
+    let max_ticks = 350;
+    let shape = 100.0;
+    let nb_reinforcement = 1000000usize;
+
     let targets = [
         [10.0 as Float, -7.0],
         [-40.0, -120.0],
         [300.0, 10.0],
         [-30.0, 100.0],
     ];
-    println!("{:?}", targets.map(|[x, y]| (x * x + y * y).sqrt()));
     let start = [0.0; 2];
-    let nb_reinforcement = 1000000usize;
+    let mut rewards = targets.map(|_| Reward::default());
 
     let width = nb_reinforcement.ilog10() as usize;
-    let init_distances = targets.map(|t| distance(start, t));
-    let mut best_distances = init_distances;
+    println!("{:?}", targets.map(|[x, y]| (x * x + y * y).sqrt()));
+
     for i in 1..nb_reinforcement {
         let mut poss = targets.map(|_| start);
         let mut d = targets.map(|_| 0.0);
-        let max_ticks = 350;
-        let shape = 100.0;
-        for ((((target, pos), d), best_distance), _init_distance) in targets
+        for (((target, pos), d), reward) in targets
             .iter()
             .zip(poss.iter_mut())
             .zip(d.iter_mut())
-            .zip(best_distances.iter_mut())
-            .zip(init_distances)
+            .zip(rewards.iter_mut())
         {
             let mut ticks = 0;
-            net.reinforce(1e-3, |net| {
+            net.reinforce(relaxation, alpha, |net| {
                 let input = [pos[0], pos[1], target[0], target[1]];
                 let output = net.pert_forward(input, shape);
                 *pos = pos.add(output);
                 ticks += 1;
                 if ticks > max_ticks {
                     *d = distance(*target, *pos);
-                    let diff = *best_distance - *d;
-                    *best_distance -= 0.5 * diff;
-                    Some(*best_distance * diff * alpha)
+                    Some(reward.update(-*d)) // NOTE: -d because we want to maximize reward 
                 } else {
                     None
                 }

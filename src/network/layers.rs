@@ -31,9 +31,11 @@ impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Networ
         self.layer_in.randomize();
         self.layer_out.randomize();
     }
-    fn update_gradient(&mut self, r: Float, delta: [Float; NO]) -> [Float; NI] {
-        self.layer_in
-            .update_gradient(r, self.layer_out.update_gradient(r, delta))
+    fn update_gradient(&mut self, relaxation: Float, delta: [Float; NO]) -> [Float; NI] {
+        self.layer_in.update_gradient(
+            relaxation,
+            self.layer_out.update_gradient(relaxation, delta),
+        )
     }
     fn reset_gradient(&mut self) {
         self.layer_in.reset_gradient();

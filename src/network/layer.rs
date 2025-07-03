@@ -54,14 +54,14 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
             .iter_mut()
             .for_each(|(ws, _)| ws.iter_mut().for_each(|w| *w = rng.sample(uni)));
     }
-    fn update_gradient(&mut self, r: Float, deltas_in: [Float; NO]) -> [Float; NI] {
+    fn update_gradient(&mut self, relaxation: Float, deltas_in: [Float; NO]) -> [Float; NI] {
         let mut delta_out = [0.0; NI];
         for (o, gs) in (0..).zip(self.gradient.iter_mut()) {
             let (ws, activation) = &self.weights[o];
             let delta = deltas_in[o] * activation.derivative(self.activations[o]);
             for (i, g) in (0..).zip(gs) {
                 delta_out[i] += delta * ws[i];
-                *g = (1.0 - r) * *g + r * delta * self.inputs[i];
+                *g = (1.0 - relaxation) * *g + relaxation * delta * self.inputs[i];
             }
         }
         delta_out
