@@ -45,9 +45,9 @@ pub fn distance(a: [Float; 2], b: [Float; 2]) -> Float {
 fn reinforcement() {
     // let mut net: Reinforcement<4, 2, Layer<4, 2, SigmoidSim>> = Default::default();
     let mut net: Reinforcement<
-        4,
+        6,
         2,
-        Layers<4, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
+        Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
     > = Default::default();
     // let mut net: Reinforcement<
     //     4,
@@ -58,9 +58,9 @@ fn reinforcement() {
 
     let alpha = 1e-3;
     let relaxation = 1e-3;
-    let shape = 100.0;
+    let shape = 30.0;
 
-    const MAX_TICKS: usize = 350;
+    const MAX_TICKS: usize = 200;
     let nb_reinforcement = 1000000usize;
 
     let targets = [
@@ -70,12 +70,6 @@ fn reinforcement() {
         [-100.0, 100.0],
     ];
     let obstacle = 40.0;
-    // let targets = [
-    //     [10.0 as Float, -7.0],
-    //     [-40.0, -120.0],
-    //     [-30.0, 100.0],
-    //     [300.0, 10.0],
-    // ];
     let start = [0.0; 2];
     let mut rewards = targets.map(|_| Reward::default());
 
@@ -83,38 +77,40 @@ fn reinforcement() {
     println!("{:?}", targets.map(|[x, y]| (x * x + y * y).sqrt()));
 
     for i in 1..nb_reinforcement {
-        let mut poss = targets.map(|_| start);
-        let mut d = targets.map(|_| 0.0);
+        let mut poss = targets.map(|_| (start, [0.0; 2]));
+        let mut dtots = targets.map(|_| 0.0);
+        let mut ds = targets.map(|_| 0.0);
         let mut trajectory = [[[0.0; 2]; 4]; MAX_TICKS];
-        for ((((target, pos), d), reward), j) in targets
+        for (((((target, (pos, speed)), dtot), d), reward), j) in targets
             .iter()
             .zip(poss.iter_mut())
-            .zip(d.iter_mut())
+            .zip(dtots.iter_mut())
+            .zip(ds.iter_mut())
             .zip(rewards.iter_mut())
             .zip(0..)
         {
             let mut ticks = 0;
             net.reinforce(relaxation, alpha, |net| {
-                let input = [pos[0], pos[1], target[0], target[1]];
+                let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
                 let output = net.pert_forward(input, shape);
-                let next_pos = pos.add(output);
+                *speed = speed.add(output.scal_mul(1e-1));
+                let next_pos = pos.add(*speed);
                 if (0..4)
                     .map(|i| {
                         next_pos.sub(targets[i].scal_mul(0.5)).norm2() < (obstacle as Float).powi(2)
                     })
                     .fold(false, |a, b| a || b)
                 {
+                    *speed = [0.0; 2];
                 } else {
                     *pos = next_pos;
                 }
                 trajectory[ticks][j] = *pos;
                 ticks += 1;
-                *d += distance(*target, *pos);
+                *dtot += speed.norm2().sqrt();
                 if ticks >= MAX_TICKS {
-                    let tmp = *d / MAX_TICKS as Float;
                     *d = distance(*target, *pos);
-                    // Some(reward.update(-tmp)) // NOTE: -d because we want to maximize reward
-                    Some(reward.update(-*d)) // NOTE: -d because we want to maximize reward 
+                    Some(reward.update(-*dtot / (1.0 + *d) * 1e-3 - *d))
                 } else {
                     None
                 }
@@ -129,9 +125,11 @@ fn reinforcement() {
             )
             .ok();
             println!(
-                "{i:<width$} {MAX_TICKS:<3}: {:.1} {:?}",
-                d.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
-                d.map(|v| v as i64)
+                "{i:<width$} {MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
+                ds.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
+                ds.map(|v| v as i64),
+                dtots.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
+                dtots.map(|v| v as i64)
             );
         }
     }
