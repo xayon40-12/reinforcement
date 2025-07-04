@@ -40,7 +40,11 @@ impl Activation for SigmoidSim {
     }
     fn derivative(&self, input: Float) -> Float {
         let e = (-input).exp();
-        2.0 * e / (1.0 + e).powi(2)
+        if e.is_infinite() || e.is_nan() {
+            0.0
+        } else {
+            2.0 * e / (1.0 + e).powi(2)
+        }
     }
 }
 impl BoundedActivation for SigmoidSim {
@@ -57,7 +61,11 @@ impl Activation for Sigmoid {
     }
     fn derivative(&self, input: Float) -> Float {
         let e = (-input).exp();
-        e / (1.0 + e).powi(2)
+        if e.is_infinite() || e.is_nan() {
+            0.0
+        } else {
+            e / (1.0 + e).powi(2)
+        }
     }
 }
 impl BoundedActivation for Sigmoid {

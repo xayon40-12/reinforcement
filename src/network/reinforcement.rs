@@ -16,6 +16,7 @@ impl Reward {
     pub fn new(best: Float) -> Reward {
         Reward { diff: 0.0, best }
     }
+
     pub fn update(&mut self, reward: Float) -> Float {
         self.diff = reward - self.best;
         self.best += 0.5 * self.diff;
