@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 rand = "0.9"
 rand_distr = "0.5"
+getrandom = { version = "0.3", features = ["wasm_js"]}
 array_vector_space = {git = "https://github.com/xayon40-12/array_vector_space.git"}
+iced = {version = "0.13.1", features = ["webgl", "svg", "smol"]}
+instant = { version = "0.1", features = ["wasm-bindgen"], default-features = false }
