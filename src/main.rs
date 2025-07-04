@@ -43,17 +43,11 @@ pub fn distance(a: [Float; 2], b: [Float; 2]) -> Float {
 }
 
 fn reinforcement() {
-    // let mut net: Reinforcement<4, 2, Layer<4, 2, SigmoidSim>> = Default::default();
     let mut net: Reinforcement<
         6,
         2,
         Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
     > = Default::default();
-    // let mut net: Reinforcement<
-    //     4,
-    //     2,
-    //     Layers<4, 12, Relu, Layers<12, 8, Relu, Layers<8, 5, Relu, Layer<5, 2, SigmoidSim>>>>,
-    // > = Default::default();
     net.randomize();
 
     let alpha = 1e-3;
