@@ -201,22 +201,20 @@ impl eframe::App for Content {
         }
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
-            ui.horizontal(|ui| {
-                if ui.button("reset").clicked() {
-                    *self = Self::new();
-                }
-                ui.label(format!(
-                    "{:<4} {MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
-                    self.nb_reinforcement,
-                    self.ds.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
-                    self.ds.map(|v| v as i64),
-                    self.dtots
-                        .iter()
-                        .fold(0.0 as Float, |a, v| a + v * v)
-                        .sqrt(),
-                    self.dtots.map(|v| v as i64)
-                ));
-            });
+            if ui.button("reset").clicked() {
+                *self = Self::new();
+            }
+            // ui.label(format!(
+            //     "{:<4} {MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
+            //     self.nb_reinforcement,
+            //     self.ds.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
+            //     self.ds.map(|v| v as i64),
+            //     self.dtots
+            //         .iter()
+            //         .fold(0.0 as Float, |a, v| a + v * v)
+            //         .sqrt(),
+            //     self.dtots.map(|v| v as i64)
+            // ));
 
             Frame::canvas(ui.style()).show(ui, |ui| {
                 let desired_size = ui.available_size();
@@ -249,7 +247,7 @@ impl eframe::App for Content {
                             epaint::Shape::circle_filled(
                                 to_screen * pos2(x as _, y as _),
                                 to_screen.scale().y * r as f32,
-                                Color32::BLACK,
+                                Color32::GRAY,
                             )
                         }))
                         .chain(self.targets.into_iter().zip(colors.into_iter()).map(
