@@ -1,7 +1,7 @@
 use array_vector_space::ArrayVectorSpace;
 use eframe::{CreationContext, egui};
 use egui::{
-    Color32, Frame, Key, Pos2, Rect, ScrollArea, emath,
+    Color32, Frame, Key, Pos2, Rect, ScrollArea, Stroke, emath,
     epaint::{self, PathStroke},
     lerp, pos2, remap, vec2,
 };
@@ -221,42 +221,46 @@ impl eframe::App for Content {
             Frame::canvas(ui.style()).show(ui, |ui| {
                 let desired_size = ui.available_size();
                 let ratio = desired_size.x / desired_size.y;
+                let rx = ratio.max(1.0);
+                let ry = ratio.recip().max(1.0);
                 let (_id, rect) = ui.allocate_space(desired_size);
 
                 let to_screen = emath::RectTransform::from_to(
-                    Rect::from_x_y_ranges(-200.0 * ratio..=200.0 * ratio, -200.0..=200.0),
+                    Rect::from_x_y_ranges(-200.0 * rx..=200.0 * rx, -200.0 * ry..=200.0 * ry),
                     rect,
                 );
                 let colors = [
                     Color32::from_rgb(255, 0, 0),
                     Color32::from_rgb(0, 255, 0),
                     Color32::from_rgb(0, 0, 255),
-                    Color32::from_rgb(255, 255, 0),
+                    Color32::from_rgb(255, 192, 0),
                 ];
-                let shapes = self
-                    .trajectory
-                    .iter()
-                    .zip(colors.into_iter())
-                    .map(|(t, c)| {
-                        epaint::Shape::line(
-                            t.map(|[x, y]| to_screen * pos2(x as _, y as _)).to_vec(),
-                            PathStroke::new(5.0, c),
-                        )
-                    })
-                    .chain(self.obstacles.into_iter().map(|([x, y], r)| {
-                        epaint::Shape::circle_filled(
-                            to_screen * pos2(x as _, y as _),
-                            to_screen.scale().y * r as f32,
-                            Color32::BLACK,
-                        )
-                    }))
-                    .chain(self.targets.into_iter().map(|[x, y]| {
-                        epaint::Shape::circle_filled(
-                            to_screen * pos2(x as _, y as _),
-                            to_screen.scale().y * 5.0,
-                            Color32::GRAY,
-                        )
-                    }));
+                let shapes =
+                    self.trajectory
+                        .iter()
+                        .zip(colors.into_iter())
+                        .map(|(t, c)| {
+                            epaint::Shape::line(
+                                t.map(|[x, y]| to_screen * pos2(x as _, y as _)).to_vec(),
+                                PathStroke::new(5.0, c),
+                            )
+                        })
+                        .chain(self.obstacles.into_iter().map(|([x, y], r)| {
+                            epaint::Shape::circle_filled(
+                                to_screen * pos2(x as _, y as _),
+                                to_screen.scale().y * r as f32,
+                                Color32::BLACK,
+                            )
+                        }))
+                        .chain(self.targets.into_iter().zip(colors.into_iter()).map(
+                            |([x, y], c)| {
+                                epaint::Shape::circle_stroke(
+                                    to_screen * pos2(x as _, y as _),
+                                    to_screen.scale().y * 3.0,
+                                    Stroke::new(1.0, c),
+                                )
+                            },
+                        ));
 
                 ui.painter().extend(shapes);
             });
