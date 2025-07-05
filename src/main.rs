@@ -140,7 +140,7 @@ impl Content {
             targets,
             start: [0.0; 2],
             rewards: [Reward::default(); 4],
-            nb_reinforcement: 166,
+            nb_reinforcement: 1,
             ds: [0.0; 4],
             dtots: [0.0; 4],
             trajectory: [[[0.0; 2]; MAX_TICKS]; 4],
@@ -194,6 +194,11 @@ impl Content {
 }
 impl eframe::App for Content {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        if ctx.input(|i| i.stable_dt) < 0.0166 {
+            self.nb_reinforcement = 1 + self.nb_reinforcement * 10 / 9;
+        } else {
+            self.nb_reinforcement = 1 + self.nb_reinforcement * 9 / 10;
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
             ui.horizontal(|ui| {
@@ -201,7 +206,8 @@ impl eframe::App for Content {
                     *self = Self::new();
                 }
                 ui.label(format!(
-                    "{MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
+                    "{:<4} {MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
+                    self.nb_reinforcement,
                     self.ds.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
                     self.ds.map(|v| v as i64),
                     self.dtots
