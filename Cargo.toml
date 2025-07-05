@@ -8,5 +8,15 @@ rand = "0.9"
 rand_distr = "0.5"
 getrandom = { version = "0.3", features = ["wasm_js"]}
 array_vector_space = {git = "https://github.com/xayon40-12/array_vector_space.git"}
-iced = {version = "0.13.1", features = ["webgl", "svg", "smol"]}
 instant = { version = "0.1", features = ["wasm-bindgen"], default-features = false }
+eframe = { version = "0.31" }
+egui = { version = "0.31" }
+log = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11.8"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4.50"
+web-sys = "0.3.70"              # to access the DOM (to hide the loading text)
+
