@@ -1,0 +1,3 @@
+[build]
+dist = "gh-pages/docs"
+public_url = "https://xayon40-12.github.io/reinforcement"
