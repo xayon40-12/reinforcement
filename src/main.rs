@@ -180,38 +180,39 @@ impl Content {
                 .zip(0..)
             {
                 let mut ticks = 0;
-                self.net.reinforce(self.relaxation, self.alpha, |net| {
-                    let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
-                    let output = net.pert_forward(input, self.shape);
-                    *speed = speed.add(output.scal_mul(1e-1));
-                    let next_pos = pos.add(*speed);
-                    let mut collision = false;
-                    for (o, r) in self.obstacles {
-                        if next_pos.sub(o).norm2() < r * r {
-                            let dot = pos
-                                .sub(o)
-                                .normalized()
-                                .dot(speed.normalized())
-                                .acos()
-                                .powi(3);
-                            *hit += 1.0 + dot; // NOTE: penalize more direct hit
-                            *speed = [0.0; 2];
-                            collision = true;
+                self.net
+                    .reinforce(self.relaxation, self.alpha, &mut [()], |ctx, net| {
+                        let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
+                        let output = net.pert_forward(input, self.shape);
+                        *speed = speed.add(output.scal_mul(1e-1));
+                        let next_pos = pos.add(*speed);
+                        let mut collision = false;
+                        for (o, r) in self.obstacles {
+                            if next_pos.sub(o).norm2() < r * r {
+                                let dot = pos
+                                    .sub(o)
+                                    .normalized()
+                                    .dot(speed.normalized())
+                                    .acos()
+                                    .powi(3);
+                                *hit += 1.0 + dot; // NOTE: penalize more direct hit
+                                *speed = [0.0; 2];
+                                collision = true;
+                            }
                         }
-                    }
-                    if !collision {
-                        *pos = next_pos;
-                    }
-                    self.trajectory[j][ticks] = *pos;
-                    ticks += 1;
-                    *dtot += speed.norm2().sqrt();
-                    if ticks >= MAX_TICKS {
-                        *d = target.sub(*pos).norm2().sqrt();
-                        Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
-                    } else {
-                        None
-                    }
-                });
+                        if !collision {
+                            *pos = next_pos;
+                        }
+                        self.trajectory[j][ticks] = *pos;
+                        ticks += 1;
+                        *dtot += speed.norm2().sqrt();
+                        if ticks >= MAX_TICKS {
+                            *d = target.sub(*pos).norm2().sqrt();
+                            Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
+                        } else {
+                            None
+                        }
+                    });
             }
         }
     }
@@ -225,6 +226,7 @@ impl eframe::App for Content {
         }
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
+            ui.label(format!("{}", self.nb_reinforcement));
             if ui.button("reset").clicked() {
                 self.reset();
             }

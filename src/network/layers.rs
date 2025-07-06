@@ -5,7 +5,7 @@ use super::{
     layer::Layer,
 };
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Layers<const NI: usize, const NH: usize, A: Activation, O: JoinNetwork<NH>> {
     layer_in: Layer<NI, NH, A>,
     layer_out: O,
@@ -51,6 +51,10 @@ impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Networ
     fn rescale_gradient(&mut self, a: Float) {
         self.layer_in.rescale_gradient(a);
         self.layer_out.rescale_gradient(a);
+    }
+    fn add_gradient(&mut self, rhs: &Self) {
+        self.layer_in.add_gradient(&rhs.layer_in);
+        self.layer_out.add_gradient(&rhs.layer_out);
     }
 }
 impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: BoundedNetwork<NH, NO>>

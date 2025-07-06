@@ -8,6 +8,7 @@ use super::{
     activation::{Activation, BoundedActivation},
 };
 
+#[derive(Clone)]
 pub struct Layer<const NI: usize, const NO: usize, A: Activation> {
     weights: [([Float; NI], Float, A); NO],
     gradient: [[Float; NI]; NO],
@@ -95,6 +96,10 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
     }
     fn norm2_gradient(&self) -> Float {
         self.gradient.norm2()
+    }
+    fn add_gradient(&mut self, rhs: &Self) {
+        self.gradient = self.gradient.add(rhs.gradient);
+        self.gradient_bias = self.gradient_bias.add(rhs.gradient_bias);
     }
 }
 impl<const NI: usize, const NO: usize, A: BoundedActivation> BoundedNetwork<NI, NO>

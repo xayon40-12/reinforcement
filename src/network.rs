@@ -15,7 +15,7 @@ pub trait JoinNetwork<const NI: usize> {
 pub trait ForwardNetwork<const NI: usize, const NO: usize>: JoinNetwork<NI> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO];
 }
-pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
+pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> + Clone {
     fn randomize(&mut self);
     /// The parameter $r$ is the ratio $0 < r <= 1$ for the relaxation of the update of the gradient. A value of $r = 1$ correspond to keep only the new value of the gradient, whereas $r = 0.5$ will average the new and last value.
     fn update_gradient(&mut self, relaxation: Float, delta: [Float; NO]) -> [Float; NI];
@@ -26,6 +26,7 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> {
     fn normalize_gradient(&mut self) {
         self.rescale_gradient(self.norm2_gradient().sqrt().recip());
     }
+    fn add_gradient(&mut self, rhs: &Self);
     fn train(
         &mut self,
         iterations: usize,

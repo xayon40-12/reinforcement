@@ -24,30 +24,42 @@ impl Reward {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Reinforcement<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> {
     network: N,
     relaxation: Float,
 }
 impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<NI, NO, N> {
-    pub fn reinforce(
+    pub fn reinforce<const NC: usize, C>(
         &mut self,
         relaxation: Float,
         alpha: Float,
-        mut f: impl FnMut(&mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>) -> Option<Float>,
+        tasks_ctx: &mut [C; NC],
+        mut f: impl FnMut(
+            &mut C,
+            &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
+        ) -> Option<Float>,
     ) where
         Self: Sized,
     {
         self.relaxation = relaxation;
-        loop {
-            let reward_update = f(self);
-            if let Some(reward_update) = reward_update {
-                self.normalize_gradient();
-                self.apply_gradient(reward_update * alpha);
-                self.reset_gradient();
-                break;
+        let mut nets: [_; NC] = std::array::from_fn(|_| self.clone());
+        for (ctx, net) in tasks_ctx.iter_mut().zip(nets.iter_mut()) {
+            loop {
+                let reward_update = f(ctx, net);
+                if let Some(reward_update) = reward_update {
+                    // net.normalize_gradient();
+                    // net.rescale_gradient(reward_update);
+                    // self.add_gradient(net);
+                    self.normalize_gradient();
+                    self.apply_gradient(reward_update * alpha);
+                    self.reset_gradient();
+                    break;
+                }
             }
         }
+        // self.apply_gradient(alpha);
+        // self.reset_gradient();
     }
 }
 impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> JoinNetwork<NI>
@@ -104,6 +116,9 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Network<NI, NO
     }
     fn norm2_gradient(&self) -> Float {
         self.network.norm2_gradient()
+    }
+    fn add_gradient(&mut self, rhs: &Self) {
+        self.network.add_gradient(&rhs.network);
     }
 }
 impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> BoundedNetwork<NI, NO>
