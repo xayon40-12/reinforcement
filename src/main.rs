@@ -195,18 +195,11 @@ impl Content {
                     let mut collision = false;
                     for (o, r) in self.obstacles {
                         if next_pos.sub(o).norm2() < r * r {
-                            let dot = pos
-                                .sub(o)
-                                .normalized()
-                                .dot(speed.normalized())
-                                .max(-1.0)
-                                .min(1.0)
-                                .acos()
-                                .powi(3);
-                            *hit += 1.0 + dot; // NOTE: penalize more direct hit
                             *speed = [0.0; 2];
                             collision = true;
                         }
+                        let d = pos.sub(o).norm2().sqrt() - r;
+                        *hit += 1e3 / (1.0 + d).powi(3);
                     }
                     if !collision {
                         *pos = next_pos;
