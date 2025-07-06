@@ -122,9 +122,6 @@ struct Content {
     rewards: [Reward; 4],
     starts: [[Float; 2]; 4],
     nb_reinforcement: usize,
-    ds: [Float; 4],
-    dtots: [Float; 4],
-    hits: [Float; 4],
     trajectory: [[[Float; 2]; MAX_TICKS]; 4],
 }
 
@@ -143,17 +140,14 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 3e-3,
-            relaxation: 1e-3,
-            shape: 3e2,
-            obstacles: targets.map(|t| (t.scal_mul(0.5), 30.0)),
+            alpha: 1e-5,
+            relaxation: 1e-4,
+            shape: 1e3,
+            obstacles: targets.map(|t| (t.scal_mul(0.5), 40.0)),
             targets,
             starts,
             rewards: [Reward::default(); 4],
             nb_reinforcement: 1,
-            ds: [0.0; 4],
-            dtots: [0.0; 4],
-            hits: [0.0; 4],
             trajectory: [[[0.0; 2]; MAX_TICKS]; 4],
         };
         s.net.randomize();
@@ -165,54 +159,59 @@ impl Content {
     }
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
-            let mut poss = self.starts.map(|p| (p, [0.0; 2]));
-            self.dtots = [0.0; 4];
-            self.ds = [0.0; 4];
-            self.hits = [0.0; 4];
-            for ((((((target, (pos, speed)), dtot), d), hit), reward), j) in self
-                .targets
-                .iter()
-                .zip(poss.iter_mut())
-                .zip(self.dtots.iter_mut())
-                .zip(self.ds.iter_mut())
-                .zip(self.hits.iter_mut())
-                .zip(self.rewards.iter_mut())
-                .zip(0..)
-            {
-                let mut ticks = 0;
-                self.net
-                    .reinforce(self.relaxation, self.alpha, &mut [()], |ctx, net| {
-                        let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
-                        let output = net.pert_forward(input, self.shape);
-                        *speed = speed.add(output.scal_mul(1e-1));
-                        let next_pos = pos.add(*speed);
-                        let mut collision = false;
-                        for (o, r) in self.obstacles {
-                            if next_pos.sub(o).norm2() < r * r {
-                                let dot = pos
-                                    .sub(o)
-                                    .normalized()
-                                    .dot(speed.normalized())
-                                    .acos()
-                                    .powi(3);
-                                *hit += 1.0 + dot; // NOTE: penalize more direct hit
-                                *speed = [0.0; 2];
-                                collision = true;
-                            }
+            let mut ctxs: [_; 4] = std::array::from_fn(|i| {
+                (
+                    self.rewards[i],
+                    self.trajectory[i],
+                    self.targets[i],
+                    self.starts[i],
+                    [0.0; 2],
+                    0.0,
+                    0.0,
+                    0.0,
+                    0,
+                )
+            });
+            self.net.reinforce(
+                self.relaxation,
+                self.alpha,
+                &mut ctxs,
+                |(reward, trajectory, target, pos, speed, d, dtot, hit, ticks), net| {
+                    let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
+                    let output = net.pert_forward(input, self.shape);
+                    *speed = speed.add(output.scal_mul(1e-1));
+                    let next_pos = pos.add(*speed);
+                    let mut collision = false;
+                    for (o, r) in self.obstacles {
+                        if next_pos.sub(o).norm2() < r * r {
+                            let dot = pos
+                                .sub(o)
+                                .normalized()
+                                .dot(speed.normalized())
+                                .acos()
+                                .powi(3);
+                            *hit += 1.0 + dot; // NOTE: penalize more direct hit
+                            *speed = [0.0; 2];
+                            collision = true;
                         }
-                        if !collision {
-                            *pos = next_pos;
-                        }
-                        self.trajectory[j][ticks] = *pos;
-                        ticks += 1;
-                        *dtot += speed.norm2().sqrt();
-                        if ticks >= MAX_TICKS {
-                            *d = target.sub(*pos).norm2().sqrt();
-                            Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
-                        } else {
-                            None
-                        }
-                    });
+                    }
+                    if !collision {
+                        *pos = next_pos;
+                    }
+                    trajectory[*ticks] = *pos;
+                    *ticks += 1;
+                    *dtot += speed.norm2().sqrt();
+                    if *ticks >= MAX_TICKS {
+                        *d = target.sub(*pos).norm2().sqrt();
+                        Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
+                    } else {
+                        None
+                    }
+                },
+            );
+            for (i, (reward, trajectory, ..)) in (0..).zip(ctxs.into_iter()) {
+                self.rewards[i] = reward;
+                self.trajectory[i] = trajectory;
             }
         }
     }

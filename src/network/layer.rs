@@ -92,7 +92,8 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
             });
     }
     fn rescale_gradient(&mut self, a: Float) {
-        self.gradient.scal_mul(a);
+        self.gradient = self.gradient.scal_mul(a);
+        self.gradient_bias = self.gradient_bias.scal_mul(a);
     }
     fn norm2_gradient(&self) -> Float {
         self.gradient.norm2()
