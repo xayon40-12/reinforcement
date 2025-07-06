@@ -50,7 +50,7 @@ impl<const NI: usize, const NO: usize, A: Activation> ForwardNetwork<NI, NO> for
 impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<NI, NO, A> {
     fn randomize(&mut self) {
         let mut rng = rand::rng();
-        let a = 1e-1;
+        let a = 1.0 / NO as Float;
         let uni = rand::distr::Uniform::new(-a, a).unwrap();
         self.weights.iter_mut().for_each(|(ws, bias, _)| {
             ws.iter_mut().for_each(|w| *w = rng.sample(uni));

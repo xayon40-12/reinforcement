@@ -1,9 +1,9 @@
 use array_vector_space::ArrayVectorSpace;
-use eframe::{CreationContext, egui};
+use eframe::egui;
 use egui::{
-    Color32, Frame, Key, Pos2, Rect, ScrollArea, Stroke, emath,
+    Color32, Frame, Rect, Stroke, emath,
     epaint::{self, PathStroke},
-    lerp, pos2, remap, vec2,
+    pos2,
 };
 use reinforcement::network::{
     Float, Network,
@@ -109,17 +109,22 @@ fn main() {
 }
 
 struct Content {
-    net: Reinforcement<6, 2, Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
+    net: Reinforcement<
+        6,
+        2,
+        Layers<6, 10, Relu, Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
+    >,
     alpha: Float,
     relaxation: Float,
     shape: Float,
     obstacles: [([Float; 2], Float); 4],
     targets: [[Float; 2]; 4],
     rewards: [Reward; 4],
-    start: [Float; 2],
+    starts: [[Float; 2]; 4],
     nb_reinforcement: usize,
     ds: [Float; 4],
     dtots: [Float; 4],
+    hits: [Float; 4],
     trajectory: [[[Float; 2]; MAX_TICKS]; 4],
 }
 
@@ -131,34 +136,46 @@ impl Content {
             [-100.0, -100.0],
             [-100.0, 100.0],
         ];
+        let starts = std::array::from_fn(|i| {
+            targets[(i + 1) % 4]
+                .add(targets[(i + 2) % 4])
+                .scal_mul(0.25)
+        });
         let mut s = Content {
             net: Default::default(),
-            alpha: 1e-3,
+            alpha: 3e-3,
             relaxation: 1e-3,
-            shape: 30.0,
-            obstacles: targets.map(|t| (t.scal_mul(0.5), 40.0)),
+            shape: 3e2,
+            obstacles: targets.map(|t| (t.scal_mul(0.5), 30.0)),
             targets,
-            start: [0.0; 2],
+            starts,
             rewards: [Reward::default(); 4],
             nb_reinforcement: 1,
             ds: [0.0; 4],
             dtots: [0.0; 4],
+            hits: [0.0; 4],
             trajectory: [[[0.0; 2]; MAX_TICKS]; 4],
         };
         s.net.randomize();
         s
     }
+    fn reset(&mut self) {
+        self.net.randomize();
+        self.rewards = [Reward::default(); 4];
+    }
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
-            let mut poss = self.targets.map(|_| (self.start, [0.0; 2]));
-            self.dtots = self.targets.map(|_| 0.0);
-            self.ds = self.targets.map(|_| 0.0);
-            for (((((target, (pos, speed)), dtot), d), reward), j) in self
+            let mut poss = self.starts.map(|p| (p, [0.0; 2]));
+            self.dtots = [0.0; 4];
+            self.ds = [0.0; 4];
+            self.hits = [0.0; 4];
+            for ((((((target, (pos, speed)), dtot), d), hit), reward), j) in self
                 .targets
                 .iter()
                 .zip(poss.iter_mut())
                 .zip(self.dtots.iter_mut())
                 .zip(self.ds.iter_mut())
+                .zip(self.hits.iter_mut())
                 .zip(self.rewards.iter_mut())
                 .zip(0..)
             {
@@ -168,14 +185,21 @@ impl Content {
                     let output = net.pert_forward(input, self.shape);
                     *speed = speed.add(output.scal_mul(1e-1));
                     let next_pos = pos.add(*speed);
-                    if self
-                        .obstacles
-                        .into_iter()
-                        .map(|(p, r)| next_pos.sub(p).norm2() < r * r)
-                        .fold(false, |a, b| a || b)
-                    {
-                        *speed = [0.0; 2];
-                    } else {
+                    let mut collision = false;
+                    for (o, r) in self.obstacles {
+                        if next_pos.sub(o).norm2() < r * r {
+                            let dot = pos
+                                .sub(o)
+                                .normalized()
+                                .dot(speed.normalized())
+                                .acos()
+                                .powi(3);
+                            *hit += 1.0 + dot; // NOTE: penalize more direct hit
+                            *speed = [0.0; 2];
+                            collision = true;
+                        }
+                    }
+                    if !collision {
                         *pos = next_pos;
                     }
                     self.trajectory[j][ticks] = *pos;
@@ -183,7 +207,7 @@ impl Content {
                     *dtot += speed.norm2().sqrt();
                     if ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
-                        Some(reward.update(-*dtot / (1.0 + *d) * 1e-3 - *d))
+                        Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
                     } else {
                         None
                     }
@@ -202,19 +226,23 @@ impl eframe::App for Content {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
             if ui.button("reset").clicked() {
-                *self = Self::new();
+                self.reset();
             }
-            // ui.label(format!(
-            //     "{:<4} {MAX_TICKS:<3}: target dist {:.1} {:?} | tot dist {:.1} {:?}",
-            //     self.nb_reinforcement,
-            //     self.ds.iter().fold(0.0 as Float, |a, v| a + v * v).sqrt(),
-            //     self.ds.map(|v| v as i64),
-            //     self.dtots
-            //         .iter()
-            //         .fold(0.0 as Float, |a, v| a + v * v)
-            //         .sqrt(),
-            //     self.dtots.map(|v| v as i64)
-            // ));
+            ui.add(
+                egui::Slider::new(&mut self.alpha, 1e-10..=1e5)
+                    .logarithmic(true)
+                    .text("alpha"),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.relaxation, 1e-5..=1.0)
+                    .logarithmic(true)
+                    .text("relaxation"),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.shape, 1.0..=1e6)
+                    .logarithmic(true)
+                    .text("shape"),
+            );
 
             Frame::canvas(ui.style()).show(ui, |ui| {
                 let desired_size = ui.available_size();
@@ -256,6 +284,15 @@ impl eframe::App for Content {
                                     to_screen * pos2(x as _, y as _),
                                     to_screen.scale().y * 3.0,
                                     Stroke::new(1.0, c),
+                                )
+                            },
+                        ))
+                        .chain(self.starts.into_iter().zip(colors.into_iter()).map(
+                            |([x, y], c)| {
+                                epaint::Shape::circle_filled(
+                                    to_screen * pos2(x as _, y as _),
+                                    to_screen.scale().y * 5.0,
+                                    c,
                                 )
                             },
                         ));
