@@ -13,7 +13,7 @@ use reinforcement::network::{
     reinforcement::{Reinforcement, Reward},
 };
 
-const MAX_TICKS: usize = 200;
+const MAX_TICKS: usize = 100;
 
 fn add() {
     //TODO use identity for activation for this case
@@ -112,13 +112,14 @@ struct Content {
     net: Reinforcement<
         6,
         2,
+        // Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
         Layers<6, 10, Relu, Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
     >,
     alpha: Float,
     relaxation: Float,
     shape: Float,
-    obstacles: [([Float; 2], Float); 4],
-    targets: [[Float; 2]; 4],
+    obstacles: [([Float; 2], Float); 44],
+    targets: [([Float; 2], Float); 4],
     rewards: [Reward; 4],
     starts: [[Float; 2]; 4],
     nb_reinforcement: usize,
@@ -128,22 +129,32 @@ struct Content {
 impl Content {
     fn new() -> Self {
         let targets = [
-            [100.0 as Float, 100.0],
-            [100.0, -100.0],
-            [-100.0, -100.0],
-            [-100.0, 100.0],
+            ([100.0 as Float, 100.0], 5.0),
+            ([100.0, -100.0], 5.0),
+            ([-100.0, -100.0], 5.0),
+            ([-100.0, 100.0], 5.0),
         ];
         let starts = std::array::from_fn(|i| {
             targets[(i + 1) % 4]
-                .add(targets[(i + 2) % 4])
+                .0
+                .add(targets[(i + 2) % 4].0)
                 .scal_mul(0.25)
+        });
+        let obstacles: [_; 44] = std::array::from_fn(|i| {
+            if i < 4 {
+                (targets[i].0.scal_mul(0.5), 40.0)
+            } else {
+                let a = (i - 4) as Float / 40.0 * 3.1415 * 2.0;
+                let r = 200.0;
+                ([a.cos() * r, a.sin() * r], 30.0)
+            }
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 1e-5,
-            relaxation: 1e-4,
+            alpha: 1e-4,
+            relaxation: 1e-3,
             shape: 1e3,
-            obstacles: targets.map(|t| (t.scal_mul(0.5), 40.0)),
+            obstacles,
             targets,
             starts,
             rewards: [Reward::default(); 4],
@@ -176,7 +187,7 @@ impl Content {
                 self.relaxation,
                 self.alpha,
                 &mut ctxs,
-                |(reward, trajectory, target, pos, speed, d, dtot, hit, ticks), net| {
+                |(reward, trajectory, (target, _), pos, speed, d, dtot, hit, ticks), net| {
                     let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
                     let output = net.pert_forward(input, self.shape);
                     *speed = speed.add(output.scal_mul(1e-1));
@@ -188,6 +199,8 @@ impl Content {
                                 .sub(o)
                                 .normalized()
                                 .dot(speed.normalized())
+                                .max(-1.0)
+                                .min(1.0)
                                 .acos()
                                 .powi(3);
                             *hit += 1.0 + dot; // NOTE: penalize more direct hit
@@ -203,15 +216,22 @@ impl Content {
                     *dtot += speed.norm2().sqrt();
                     if *ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
-                        Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
+                        // Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
+                        Some(reward.update(-*d - *hit * 1e-2))
                     } else {
                         None
                     }
                 },
             );
-            for (i, (reward, trajectory, ..)) in (0..).zip(ctxs.into_iter()) {
+            for (i, (reward, trajectory, (t, r), ..)) in (0..).zip(ctxs.into_iter()) {
                 self.rewards[i] = reward;
                 self.trajectory[i] = trajectory;
+                let next = trajectory[0];
+                if next.sub(t).norm2() < r * r {
+                    self.starts[i] = [0.0; 2];
+                } else {
+                    self.starts[i] = next;
+                }
             }
         }
     }
@@ -280,10 +300,10 @@ impl eframe::App for Content {
                             )
                         }))
                         .chain(self.targets.into_iter().zip(colors.into_iter()).map(
-                            |([x, y], c)| {
+                            |(([x, y], r), c)| {
                                 epaint::Shape::circle_stroke(
                                     to_screen * pos2(x as _, y as _),
-                                    to_screen.scale().y * 3.0,
+                                    to_screen.scale().y * r as f32,
                                     Stroke::new(1.0, c),
                                 )
                             },

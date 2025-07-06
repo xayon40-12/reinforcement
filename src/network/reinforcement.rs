@@ -57,7 +57,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
                 }
             });
         nets.into_iter().for_each(|net| self.add_gradient(&net));
-        self.apply_gradient(alpha);
+        self.apply_gradient(alpha / NC as Float); // NOTE: divide by the number of added gradients
         self.reset_gradient();
     }
 }
