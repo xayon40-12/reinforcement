@@ -6,7 +6,7 @@ use egui::{
     pos2,
 };
 use reinforcement::network::{
-    Float, Network,
+    Float, ForwardNetwork, Network,
     activation::{Id, Relu, SigmoidSim},
     layer::Layer,
     layers::Layers,
@@ -122,6 +122,9 @@ struct Content {
     targets: [([Float; 2], Float); 4],
     rewards: [Reward; 4],
     starts: [[Float; 2]; 4],
+    poss: [[Float; 2]; 4],
+    movement: bool,
+    learn: bool,
     nb_reinforcement: usize,
     trajectory: [[[Float; 2]; MAX_TICKS]; 4],
 }
@@ -157,6 +160,9 @@ impl Content {
             obstacles,
             targets,
             starts,
+            poss: starts,
+            movement: true,
+            learn: true,
             rewards: [Reward::default(); 4],
             nb_reinforcement: 1,
             trajectory: [[[0.0; 2]; MAX_TICKS]; 4],
@@ -167,15 +173,27 @@ impl Content {
     fn reset(&mut self) {
         self.net.randomize();
         self.rewards = [Reward::default(); 4];
+        self.poss = self.starts;
     }
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
-            let mut ctxs: [_; 4] = std::array::from_fn(|i| {
+            type Ctx = (
+                Reward,
+                [[f64; 2]; 100],
+                ([f64; 2], f64),
+                [f64; 2],
+                [f64; 2],
+                f64,
+                f64,
+                f64,
+                usize,
+            );
+            let mut ctxs: [Ctx; 4] = std::array::from_fn(|i| {
                 (
                     self.rewards[i],
                     self.trajectory[i],
                     self.targets[i],
-                    self.starts[i],
+                    self.poss[i],
                     [0.0; 2],
                     0.0,
                     0.0,
@@ -183,13 +201,9 @@ impl Content {
                     0,
                 )
             });
-            self.net.reinforce(
-                self.relaxation,
-                self.alpha,
-                &mut ctxs,
-                |(reward, trajectory, (target, _), pos, speed, d, dtot, hit, ticks), net| {
-                    let input = [pos[0], pos[1], speed[0], speed[1], target[0], target[1]];
-                    let output = net.pert_forward(input, self.shape);
+            let sim =
+                |(reward, trajectory, (target, _), pos, speed, d, dtot, hit, ticks): &mut Ctx,
+                 output: [Float; 2]| {
                     *speed = speed.add(output.scal_mul(1e-1));
                     let next_pos = pos.add(*speed);
                     let mut collision = false;
@@ -206,6 +220,11 @@ impl Content {
                     }
                     trajectory[*ticks] = *pos;
                     *ticks += 1;
+
+                    for (o, r) in self.obstacles {
+                        let d = pos.sub(o).norm2().sqrt() - r;
+                        *hit += 1e3 / (1.0 + d).powi(3);
+                    }
                     *dtot += speed.norm2().sqrt();
                     if *ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
@@ -214,16 +233,41 @@ impl Content {
                     } else {
                         None
                     }
-                },
-            );
+                };
+            if self.learn {
+                self.net
+                    .reinforce(self.relaxation, self.alpha, &mut ctxs, |ctx, net| {
+                        let output = {
+                            let (_, _, (target, _), pos, speed, ..) = ctx;
+                            net.pert_forward(
+                                [pos[0], pos[1], speed[0], speed[1], target[0], target[1]],
+                                self.shape,
+                            )
+                        };
+                        sim(ctx, output)
+                    });
+            } else {
+                for ctx in ctxs.iter_mut() {
+                    loop {
+                        let output = {
+                            let (_, _, (target, _), pos, speed, ..) = ctx;
+                            self.net
+                                .forward([pos[0], pos[1], speed[0], speed[1], target[0], target[1]])
+                        };
+                        if sim(ctx, output).is_some() {
+                            break;
+                        }
+                    }
+                }
+            }
             for (i, (reward, trajectory, (t, r), ..)) in (0..).zip(ctxs.into_iter()) {
                 self.rewards[i] = reward;
                 self.trajectory[i] = trajectory;
                 let next = trajectory[0];
                 if next.sub(t).norm2() < r * r {
-                    self.starts[i] = [0.0; 2];
-                } else {
-                    self.starts[i] = next;
+                    self.poss[i] = self.starts[i];
+                } else if self.movement {
+                    self.poss[i] = next;
                 }
             }
         }
@@ -239,9 +283,20 @@ impl eframe::App for Content {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
             ui.label(format!("{}", self.nb_reinforcement));
-            if ui.button("reset").clicked() {
-                self.reset();
-            }
+            ui.horizontal(|ui| {
+                if ui.button("reset").clicked() {
+                    self.reset();
+                }
+                if ui.toggle_value(&mut self.movement, "move").changed() {
+                    if !self.movement {
+                        self.poss = self.starts;
+                    }
+                }
+                if ui.toggle_value(&mut self.learn, "learn").changed() {
+                    self.nb_reinforcement = 1;
+                    self.poss = self.starts;
+                }
+            });
             ui.add(
                 egui::Slider::new(&mut self.alpha, 1e-10..=1e5)
                     .logarithmic(true)
@@ -309,7 +364,20 @@ impl eframe::App for Content {
                                     c,
                                 )
                             },
-                        ));
+                        ))
+                        .chain(
+                            self.trajectory
+                                .into_iter()
+                                .map(|t| t[0])
+                                .zip(colors.into_iter())
+                                .map(|([x, y], c)| {
+                                    epaint::Shape::circle_filled(
+                                        to_screen * pos2(x as _, y as _),
+                                        to_screen.scale().y * 3.0,
+                                        c,
+                                    )
+                                }),
+                        );
 
                 ui.painter().extend(shapes);
             });
