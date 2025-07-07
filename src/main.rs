@@ -10,7 +10,7 @@ use reinforcement::network::{
     activation::{Id, Relu, SigmoidSim},
     layer::Layer,
     layers::Layers,
-    reinforcement::{Reinforcement, Reward},
+    reinforcement::{Reinforcement, Score},
 };
 
 const MAX_TICKS: usize = 100;
@@ -136,7 +136,7 @@ struct Content {
     shape: Float,
     obstacles: [([Float; 2], Float); 44],
     targets: [([Float; 2], Float); 4],
-    rewards: [Reward; 4],
+    scores: [Score; 4],
     starts: [[Float; 2]; 4],
     poss: [[Float; 2]; 4],
     speeds: [[Float; 2]; 4],
@@ -172,9 +172,9 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 1e-3,
+            alpha: 5e-4,
             relaxation: 1e-4,
-            shape: 3e3,
+            shape: 2e3,
             obstacles,
             targets,
             starts,
@@ -182,7 +182,7 @@ impl Content {
             speeds: [[0.0; 2]; 4],
             movement: false,
             learn: true,
-            rewards: [Reward::default(); 4],
+            scores: [Score::default(); 4],
             nb_reinforcement: 1,
             tot_reinforcement: 0,
             trajectory: [[([0.0; 2], [0.0; 2]); MAX_TICKS]; 4],
@@ -192,14 +192,14 @@ impl Content {
     }
     fn reset(&mut self) {
         self.net.randomize();
-        self.rewards = [Reward::default(); 4];
+        self.scores = [Score::default(); 4];
         self.poss = self.starts;
         self.speeds = [[0.0; 2]; 4];
     }
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
             type Ctx = (
-                Reward,
+                Score,
                 [([Float; 2], [Float; 2]); MAX_TICKS],
                 ([Float; 2], Float),
                 [Float; 2],
@@ -211,7 +211,7 @@ impl Content {
             );
             let mut ctxs: [Ctx; 4] = std::array::from_fn(|i| {
                 (
-                    self.rewards[i],
+                    self.scores[i],
                     self.trajectory[i],
                     self.targets[i],
                     self.poss[i],
@@ -223,7 +223,7 @@ impl Content {
                 )
             });
             let sim =
-                |(reward, trajectory, (target, _), pos, speed, d, dtot, hit, ticks): &mut Ctx,
+                |(score, trajectory, (target, _), pos, speed, d, dtot, hit, ticks): &mut Ctx,
                  output: [Float; 2]| {
                     *speed = speed.add(output.scal_mul(1e-1));
                     let next_pos = pos.add(*speed);
@@ -245,11 +245,7 @@ impl Content {
                     *dtot += speed.norm2().sqrt();
                     if *ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
-                        Some((
-                            reward.update(-*dtot - d.powi(2) - *hit),
-                            // reward.sigma(),
-                            1.0,
-                        ))
+                        Some(score.update(-*dtot - d.powi(2) - *hit))
                     } else {
                         None
                     }
@@ -281,7 +277,7 @@ impl Content {
                 }
             }
             for (i, (reward, trajectory, (t, r), ..)) in (0..).zip(ctxs.into_iter()) {
-                self.rewards[i] = reward;
+                self.scores[i] = reward;
                 self.trajectory[i] = trajectory;
                 let (n_pos, n_speed) = trajectory[0];
                 if n_pos.sub(t).norm2() < r * r {

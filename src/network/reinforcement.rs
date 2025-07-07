@@ -8,30 +8,43 @@ use super::{
 };
 
 #[derive(Copy, Clone, Default, Debug)]
-pub struct Reward {
+pub struct Score {
+    last: Float,
     diff: Float,
     mean: Float,
     var: Float,
 }
-impl Reward {
-    pub fn new(best: Float) -> Reward {
-        Reward {
+impl Score {
+    pub fn new(mean: Float) -> Score {
+        Score {
+            last: mean,
             diff: 0.0,
-            mean: best,
+            mean,
             var: 1.0,
         }
     }
 
-    pub fn update(&mut self, reward: Float) -> Float {
-        self.diff = reward - self.mean;
+    pub fn update(&mut self, score: Float) -> Self {
+        self.last = score;
+        self.diff = score - self.mean;
         self.mean += 0.5 * self.diff;
         let a = 1e-4;
         self.var = (1.0 - a) * self.var + a * self.diff.powi(2);
-        self.diff
+        *self
     }
 
     pub fn sigma(&self) -> Float {
         self.var.sqrt()
+    }
+
+    pub fn last(&self) -> Float {
+        self.last
+    }
+    pub fn mean(&self) -> Float {
+        self.mean
+    }
+    pub fn diff(&self) -> Float {
+        self.diff
     }
 }
 
@@ -46,10 +59,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         relaxation: Float,
         alpha: Float,
         tasks_ctx: &mut [C; NC],
-        f: impl Fn(
-            &mut C,
-            &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
-        ) -> Option<(Float, Float)>
+        f: impl Fn(&mut C, &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>) -> Option<Score>
         + Send
         + Sync,
     ) where
@@ -62,10 +72,10 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
             .zip(nets.iter_mut())
             .for_each(|(ctx, net)| {
                 loop {
-                    let reward_update = f(ctx, net);
-                    if let Some((reward_update, global_scale)) = reward_update {
+                    let reward = f(ctx, net);
+                    if let Some(reward) = reward {
                         net.normalize_gradient();
-                        net.rescale_gradient(reward_update.atan() * global_scale.clamp(0.0, 1.0));
+                        net.rescale_gradient(reward.diff().atan());
                         break;
                     }
                 }
