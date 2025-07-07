@@ -10,17 +10,28 @@ use super::{
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Reward {
     diff: Float,
-    best: Float,
+    mean: Float,
+    var: Float,
 }
 impl Reward {
     pub fn new(best: Float) -> Reward {
-        Reward { diff: 0.0, best }
+        Reward {
+            diff: 0.0,
+            mean: best,
+            var: 1.0,
+        }
     }
 
     pub fn update(&mut self, reward: Float) -> Float {
-        self.diff = reward - self.best;
-        self.best += 0.5 * self.diff;
-        self.diff // TODO: should consider a way to reduce the return value as the best reward becomes better (this needs to know what was the initial reward)
+        self.diff = reward - self.mean;
+        self.mean += 0.5 * self.diff;
+        let a = 1e-4;
+        self.var = (1.0 - a) * self.var + a * self.diff.powi(2);
+        self.diff
+    }
+
+    pub fn sigma(&self) -> Float {
+        self.var.sqrt()
     }
 }
 
@@ -35,7 +46,10 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         relaxation: Float,
         alpha: Float,
         tasks_ctx: &mut [C; NC],
-        f: impl Fn(&mut C, &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>) -> Option<Float>
+        f: impl Fn(
+            &mut C,
+            &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
+        ) -> Option<(Float, Float)>
         + Send
         + Sync,
     ) where
@@ -49,9 +63,9 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
             .for_each(|(ctx, net)| {
                 loop {
                     let reward_update = f(ctx, net);
-                    if let Some(reward_update) = reward_update {
+                    if let Some((reward_update, global_scale)) = reward_update {
                         net.normalize_gradient();
-                        net.rescale_gradient(reward_update);
+                        net.rescale_gradient(reward_update.atan() * global_scale.clamp(0.0, 1.0));
                         break;
                     }
                 }

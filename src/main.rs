@@ -113,7 +113,23 @@ struct Content {
         6,
         2,
         // Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
-        Layers<6, 10, Relu, Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
+        // Layers<6, 10, Relu, Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
+        Layers<
+            6,
+            10,
+            Relu,
+            Layers<
+                10,
+                10,
+                Relu,
+                Layers<
+                    10,
+                    10,
+                    Relu,
+                    Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
+                >,
+            >,
+        >,
     >,
     alpha: Float,
     relaxation: Float,
@@ -127,6 +143,7 @@ struct Content {
     movement: bool,
     learn: bool,
     nb_reinforcement: usize,
+    tot_reinforcement: usize,
     trajectory: [[([Float; 2], [Float; 2]); MAX_TICKS]; 4],
 }
 
@@ -155,9 +172,9 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 2e-4,
-            relaxation: 1e-3,
-            shape: 1e4,
+            alpha: 1e-3,
+            relaxation: 1e-4,
+            shape: 3e3,
             obstacles,
             targets,
             starts,
@@ -167,6 +184,7 @@ impl Content {
             learn: true,
             rewards: [Reward::default(); 4],
             nb_reinforcement: 1,
+            tot_reinforcement: 0,
             trajectory: [[([0.0; 2], [0.0; 2]); MAX_TICKS]; 4],
         };
         s.net.randomize();
@@ -182,7 +200,7 @@ impl Content {
         for _ in 0..self.nb_reinforcement {
             type Ctx = (
                 Reward,
-                [([Float; 2], [Float; 2]); 100],
+                [([Float; 2], [Float; 2]); MAX_TICKS],
                 ([Float; 2], Float),
                 [Float; 2],
                 [Float; 2],
@@ -227,8 +245,11 @@ impl Content {
                     *dtot += speed.norm2().sqrt();
                     if *ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
-                        // Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
-                        Some(reward.update(-*d - *hit))
+                        Some((
+                            reward.update(-*dtot - d.powi(2) - *hit),
+                            // reward.sigma(),
+                            1.0,
+                        ))
                     } else {
                         None
                     }
@@ -272,16 +293,17 @@ impl Content {
                 }
             }
         }
+        self.tot_reinforcement += self.nb_reinforcement;
     }
 }
 impl eframe::App for Content {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let time = ctx.input(|i| i.time) as Float;
-        let r = 100.0 * (2.0 as Float).sqrt();
-        for (t, i) in self.targets.iter_mut().zip(0..) {
-            let theta = (time * 1e-2 + i as Float * 0.25) * 2.0 * 3.1415;
-            *t = ([theta.cos() * r, theta.sin() * r], t.1);
-        }
+        // let time = ctx.input(|i| i.time) as Float;
+        // let r = 100.0 * (2.0 as Float).sqrt();
+        // for (t, i) in self.targets.iter_mut().zip(0..) {
+        //     let theta = ((time * 1e1 as Float).floor() + i as Float) * 0.25 * 2.0 * 3.1415;
+        //     *t = ([theta.cos() * r, theta.sin() * r], t.1);
+        // }
         if ctx.input(|i| i.stable_dt) < 0.0166 {
             self.nb_reinforcement = 1 + self.nb_reinforcement * 10 / 9;
         } else {
@@ -290,6 +312,7 @@ impl eframe::App for Content {
         egui::CentralPanel::default().show(ctx, |ui| {
             self.reinforce();
             ui.label(format!("{}", self.nb_reinforcement));
+            ui.label(format!("{}", self.tot_reinforcement.ilog10()));
             ui.horizontal(|ui| {
                 if ui.button("reset").clicked() {
                     self.reset();
