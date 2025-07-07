@@ -123,10 +123,11 @@ struct Content {
     rewards: [Reward; 4],
     starts: [[Float; 2]; 4],
     poss: [[Float; 2]; 4],
+    speeds: [[Float; 2]; 4],
     movement: bool,
     learn: bool,
     nb_reinforcement: usize,
-    trajectory: [[[Float; 2]; MAX_TICKS]; 4],
+    trajectory: [[([Float; 2], [Float; 2]); MAX_TICKS]; 4],
 }
 
 impl Content {
@@ -154,18 +155,19 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 1e-4,
+            alpha: 2e-4,
             relaxation: 1e-3,
-            shape: 1e3,
+            shape: 1e4,
             obstacles,
             targets,
             starts,
             poss: starts,
-            movement: true,
+            speeds: [[0.0; 2]; 4],
+            movement: false,
             learn: true,
             rewards: [Reward::default(); 4],
             nb_reinforcement: 1,
-            trajectory: [[[0.0; 2]; MAX_TICKS]; 4],
+            trajectory: [[([0.0; 2], [0.0; 2]); MAX_TICKS]; 4],
         };
         s.net.randomize();
         s
@@ -174,18 +176,19 @@ impl Content {
         self.net.randomize();
         self.rewards = [Reward::default(); 4];
         self.poss = self.starts;
+        self.speeds = [[0.0; 2]; 4];
     }
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
             type Ctx = (
                 Reward,
-                [[f64; 2]; 100],
-                ([f64; 2], f64),
-                [f64; 2],
-                [f64; 2],
-                f64,
-                f64,
-                f64,
+                [([Float; 2], [Float; 2]); 100],
+                ([Float; 2], Float),
+                [Float; 2],
+                [Float; 2],
+                Float,
+                Float,
+                Float,
                 usize,
             );
             let mut ctxs: [Ctx; 4] = std::array::from_fn(|i| {
@@ -194,7 +197,7 @@ impl Content {
                     self.trajectory[i],
                     self.targets[i],
                     self.poss[i],
-                    [0.0; 2],
+                    self.speeds[i],
                     0.0,
                     0.0,
                     0.0,
@@ -213,23 +216,19 @@ impl Content {
                             collision = true;
                         }
                         let d = pos.sub(o).norm2().sqrt() - r;
-                        *hit += 1e3 / (1.0 + d).powi(3);
+                        *hit += 1e1 / (1.0 + d).powi(3);
                     }
                     if !collision {
                         *pos = next_pos;
                     }
-                    trajectory[*ticks] = *pos;
+                    trajectory[*ticks] = (*pos, *speed);
                     *ticks += 1;
 
-                    for (o, r) in self.obstacles {
-                        let d = pos.sub(o).norm2().sqrt() - r;
-                        *hit += 1e3 / (1.0 + d).powi(3);
-                    }
                     *dtot += speed.norm2().sqrt();
                     if *ticks >= MAX_TICKS {
                         *d = target.sub(*pos).norm2().sqrt();
                         // Some(reward.update(-*dtot / (1.0 + *d).powi(4) - *d - *hit))
-                        Some(reward.update(-*d - *hit * 1e-2))
+                        Some(reward.update(-*d - *hit))
                     } else {
                         None
                     }
@@ -263,11 +262,13 @@ impl Content {
             for (i, (reward, trajectory, (t, r), ..)) in (0..).zip(ctxs.into_iter()) {
                 self.rewards[i] = reward;
                 self.trajectory[i] = trajectory;
-                let next = trajectory[0];
-                if next.sub(t).norm2() < r * r {
+                let (n_pos, n_speed) = trajectory[0];
+                if n_pos.sub(t).norm2() < r * r {
                     self.poss[i] = self.starts[i];
+                    self.speeds[i] = [0.0; 2];
                 } else if self.movement {
-                    self.poss[i] = next;
+                    self.poss[i] = n_pos;
+                    self.speeds[i] = n_speed;
                 }
             }
         }
@@ -275,6 +276,12 @@ impl Content {
 }
 impl eframe::App for Content {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let time = ctx.input(|i| i.time) as Float;
+        let r = 100.0 * (2.0 as Float).sqrt();
+        for (t, i) in self.targets.iter_mut().zip(0..) {
+            let theta = (time * 1e-2 + i as Float * 0.25) * 2.0 * 3.1415;
+            *t = ([theta.cos() * r, theta.sin() * r], t.1);
+        }
         if ctx.input(|i| i.stable_dt) < 0.0166 {
             self.nb_reinforcement = 1 + self.nb_reinforcement * 10 / 9;
         } else {
@@ -290,11 +297,13 @@ impl eframe::App for Content {
                 if ui.toggle_value(&mut self.movement, "move").changed() {
                     if !self.movement {
                         self.poss = self.starts;
+                        self.speeds = [[0.0; 2]; 4];
                     }
                 }
                 if ui.toggle_value(&mut self.learn, "learn").changed() {
                     self.nb_reinforcement = 1;
                     self.poss = self.starts;
+                    self.speeds = [[0.0; 2]; 4];
                 }
             });
             ui.add(
@@ -336,7 +345,8 @@ impl eframe::App for Content {
                         .zip(colors.into_iter())
                         .map(|(t, c)| {
                             epaint::Shape::line(
-                                t.map(|[x, y]| to_screen * pos2(x as _, y as _)).to_vec(),
+                                t.map(|([x, y], _)| to_screen * pos2(x as _, y as _))
+                                    .to_vec(),
                                 PathStroke::new(5.0, c),
                             )
                         })
@@ -370,7 +380,7 @@ impl eframe::App for Content {
                                 .into_iter()
                                 .map(|t| t[0])
                                 .zip(colors.into_iter())
-                                .map(|([x, y], c)| {
+                                .map(|(([x, y], _), c)| {
                                     epaint::Shape::circle_filled(
                                         to_screen * pos2(x as _, y as _),
                                         to_screen.scale().y * 3.0,
