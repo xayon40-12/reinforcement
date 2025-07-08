@@ -60,13 +60,13 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         relaxation: Float,
         alpha: Float,
         shape: Float,
-        tasks_ctx: &mut [C; NC],
+        tasks_ctx: &mut [(C, Score); NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
         f: impl Fn(
             &mut C,
             // &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
             [Float; NO],
-        ) -> (Float, Option<Score>)
+        ) -> (Float, bool)
         //WARNING: the Float must be the score for only the current step and it should not depend from previous ones
         + Send
         + Sync,
@@ -78,10 +78,13 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         tasks_ctx
             .iter_mut()
             .zip(nets.iter_mut())
-            .for_each(|(ctx, net)| {
+            .for_each(|((ctx, score), net)| {
+                let mut total_score = 0.0;
                 loop {
-                    let (_score, reward) = f(ctx, net.pert_forward(ctx_to_net(ctx), shape));
-                    if let Some(reward) = reward {
+                    let (step_score, done) = f(ctx, net.pert_forward(ctx_to_net(ctx), shape));
+                    total_score += step_score;
+                    if done {
+                        let reward = score.update(total_score);
                         net.normalize_gradient();
                         net.rescale_gradient(reward.diff().atan());
                         break;

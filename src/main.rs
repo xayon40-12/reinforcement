@@ -179,37 +179,27 @@ impl Content {
     fn reinforce(&mut self) {
         for _ in 0..self.nb_reinforcement {
             type Ctx = (
-                Score,
                 [([Float; 2], [Float; 2]); MAX_TICKS],
                 ([Float; 2], Float),
                 [Float; 2],
                 [Float; 2],
                 Float,
-                Float,
                 usize,
             );
-            let mut ctxs: Box<[Ctx; 4]> = boxarray_(|((), i)| {
+            let mut ctxs: Box<[(Ctx, Score); 4]> = boxarray_(|((), i)| {
                 (
+                    (
+                        self.trajectory[i],
+                        self.targets[i],
+                        self.poss[i],
+                        self.speeds[i],
+                        Float::MAX,
+                        0,
+                    ),
                     self.scores[i],
-                    self.trajectory[i],
-                    self.targets[i],
-                    self.poss[i],
-                    self.speeds[i],
-                    0.0,
-                    Float::MAX,
-                    0,
                 )
             });
-            let sim = |(
-                full_score,
-                trajectory,
-                (target, r),
-                pos,
-                speed,
-                current_score,
-                min_d,
-                ticks,
-            ): &mut Ctx,
+            let sim = |(trajectory, (target, r), pos, speed, min_d, ticks): &mut Ctx,
                        output: [Float; 2]| {
                 let mut score = 0.0;
                 *speed = speed.add(output.scal_mul(1e-1));
@@ -238,18 +228,10 @@ impl Content {
                     score -= speed.norm2();
                 }
                 score -= d;
-                *current_score += score;
-                (
-                    score,
-                    if *ticks >= MAX_TICKS {
-                        Some(full_score.update(*current_score))
-                    } else {
-                        None
-                    },
-                )
+                (score, *ticks >= MAX_TICKS)
             };
             let ctx_to_net = |ctx: &Ctx| {
-                let (_, _, (target, _), pos, speed, ..) = ctx;
+                let (_, (target, _), pos, speed, ..) = ctx;
                 [pos[0], pos[1], speed[0], speed[1], target[0], target[1]]
             };
             if self.learn {
@@ -262,16 +244,16 @@ impl Content {
                     sim,
                 );
             } else {
-                for ctx in ctxs.iter_mut() {
+                for (ctx, _) in ctxs.iter_mut() {
                     loop {
-                        if sim(ctx, self.net.forward(ctx_to_net(ctx))).1.is_some() {
+                        if sim(ctx, self.net.forward(ctx_to_net(ctx))).1 {
                             break;
                         }
                     }
                 }
             }
-            for (i, (reward, trajectory, (t, r), ..)) in (0..).zip(ctxs.into_iter()) {
-                self.scores[i] = reward;
+            for (i, ((trajectory, (t, r), ..), score)) in (0..).zip(ctxs.into_iter()) {
+                self.scores[i] = score;
                 self.trajectory[i] = trajectory;
                 let (n_pos, n_speed) = trajectory[0];
                 if n_pos.sub(t).norm2() < r * r {
