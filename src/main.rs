@@ -1,4 +1,5 @@
 use array_vector_space::ArrayVectorSpace;
+use boxarray::boxarray_;
 use eframe::egui;
 use egui::{
     Color32, Frame, Rect, Stroke, emath,
@@ -109,28 +110,7 @@ fn main() {
 }
 
 struct Content {
-    net: Reinforcement<
-        6,
-        2,
-        // Layers<6, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
-        // Layers<6, 10, Relu, Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>>,
-        Layers<
-            6,
-            10,
-            Relu,
-            Layers<
-                10,
-                10,
-                Relu,
-                Layers<
-                    10,
-                    10,
-                    Relu,
-                    Layers<10, 10, Relu, Layers<10, 10, Relu, Layer<10, 2, SigmoidSim>>>,
-                >,
-            >,
-        >,
-    >,
+    net: Reinforcement<6, 2, Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 2, SigmoidSim>>>>,
     alpha: Float,
     relaxation: Float,
     shape: Float,
@@ -172,9 +152,9 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 5e-4,
+            alpha: 1e-4,
             relaxation: 1e-4,
-            shape: 2e3,
+            shape: 1e5,
             obstacles,
             targets,
             starts,
@@ -206,10 +186,9 @@ impl Content {
                 [Float; 2],
                 Float,
                 Float,
-                Float,
                 usize,
             );
-            let mut ctxs: [Ctx; 4] = std::array::from_fn(|i| {
+            let mut ctxs: Box<[Ctx; 4]> = boxarray_(|((), i)| {
                 (
                     self.scores[i],
                     self.trajectory[i],
@@ -217,39 +196,53 @@ impl Content {
                     self.poss[i],
                     self.speeds[i],
                     0.0,
-                    0.0,
-                    0.0,
+                    Float::MAX,
                     0,
                 )
             });
-            let sim =
-                |(score, trajectory, (target, _), pos, speed, d, dtot, hit, ticks): &mut Ctx,
-                 output: [Float; 2]| {
-                    *speed = speed.add(output.scal_mul(1e-1));
-                    let next_pos = pos.add(*speed);
-                    let mut collision = false;
-                    for (o, r) in self.obstacles {
-                        if next_pos.sub(o).norm2() < r * r {
-                            *speed = [0.0; 2];
-                            collision = true;
-                        }
-                        let d = pos.sub(o).norm2().sqrt() - r;
-                        *hit += 1e1 / (1.0 + d).powi(3);
+            let sim = |(
+                score,
+                trajectory,
+                (target, r),
+                pos,
+                speed,
+                current_score,
+                min_d,
+                ticks,
+            ): &mut Ctx,
+                       output: [Float; 2]| {
+                *speed = speed.add(output.scal_mul(1e-1));
+                let next_pos = pos.add(*speed);
+                let mut collision = false;
+                for (o, r) in self.obstacles {
+                    if next_pos.sub(o).norm2() < r * r {
+                        *speed = [0.0; 2];
+                        collision = true;
                     }
-                    if !collision {
-                        *pos = next_pos;
-                    }
-                    trajectory[*ticks] = (*pos, *speed);
-                    *ticks += 1;
+                }
+                if !collision {
+                    *pos = next_pos;
+                }
+                trajectory[*ticks] = (*pos, *speed);
+                *ticks += 1;
 
-                    *dtot += speed.norm2().sqrt();
-                    if *ticks >= MAX_TICKS {
-                        *d = target.sub(*pos).norm2().sqrt();
-                        Some(score.update(-*dtot - d.powi(2) - *hit))
-                    } else {
-                        None
-                    }
-                };
+                for (o, r) in self.obstacles {
+                    let d = pos.sub(o).norm2().sqrt() - r;
+                    *current_score -= 1e1 / (1.0 + d).powi(3);
+                }
+                *current_score -= speed.norm2().sqrt();
+                let d = target.sub(*pos).norm2().sqrt();
+                *min_d = min_d.min(d);
+                if *min_d < *r {
+                    *current_score -= speed.norm2();
+                }
+                *current_score -= d;
+                if *ticks >= MAX_TICKS {
+                    Some(score.update(*current_score))
+                } else {
+                    None
+                }
+            };
             if self.learn {
                 self.net
                     .reinforce(self.relaxation, self.alpha, &mut ctxs, |ctx, net| {

@@ -1,6 +1,7 @@
-use std::ops::RangeInclusive;
+use std::ops::{Deref, RangeInclusive};
 
 use array_vector_space::ArrayVectorSpace;
+use boxarray::boxarray;
 use rand_distr::Distribution;
 
 use super::{
@@ -66,7 +67,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         Self: Sized + Send + Sync,
     {
         self.relaxation = relaxation;
-        let mut nets: [_; NC] = std::array::from_fn(|_| self.clone());
+        let mut nets: Box<[Self; NC]> = boxarray(self.clone());
         tasks_ctx
             .iter_mut()
             .zip(nets.iter_mut())

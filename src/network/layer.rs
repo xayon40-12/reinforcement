@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
-use array_vector_space::ArrayVectorSpace;
+use array_vector_space::{ArrayVectorSpace, ArrayVectorSpaceMut};
+use boxarray::boxarray;
 use rand::Rng;
 
 use super::{
@@ -10,21 +11,21 @@ use super::{
 
 #[derive(Clone)]
 pub struct Layer<const NI: usize, const NO: usize, A: Activation> {
-    weights: [([Float; NI], Float, A); NO],
-    gradient: [[Float; NI]; NO],
-    gradient_bias: [Float; NO],
-    activations: [Float; NO],
-    inputs: [Float; NI],
+    weights: Box<[([Float; NI], Float, A); NO]>,
+    gradient: Box<[[Float; NI]; NO]>,
+    gradient_bias: Box<[Float; NO]>,
+    activations: Box<[Float; NO]>,
+    inputs: Box<[Float; NI]>,
 }
 
 impl<const NI: usize, const NO: usize, A: Activation> Default for Layer<NI, NO, A> {
     fn default() -> Self {
         let mut s = Self {
-            weights: [([0.0; NI], 0.0, A::default()); NO],
-            gradient: [[0.0; NI]; NO],
-            gradient_bias: [0.0; NO],
-            activations: [0.0; NO],
-            inputs: [0.0; NI],
+            weights: boxarray(([0.0; NI], 0.0, A::default())),
+            gradient: boxarray([0.0; NI]),
+            gradient_bias: boxarray(0.0),
+            activations: boxarray(0.0),
+            inputs: boxarray(0.0),
         };
         s.randomize();
         s
@@ -36,7 +37,7 @@ impl<const NI: usize, const NO: usize, A: Activation> JoinNetwork<NI> for Layer<
 }
 impl<const NI: usize, const NO: usize, A: Activation> ForwardNetwork<NI, NO> for Layer<NI, NO, A> {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
-        self.inputs = input;
+        *self.inputs = input;
         std::array::from_fn(|o| {
             let (ws, bias, activation) = &self.weights[o];
             self.activations[o] = ws
@@ -76,8 +77,8 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
         delta_out
     }
     fn reset_gradient(&mut self) {
-        self.gradient = [[0.0; NI]; NO];
-        self.gradient_bias = [0.0; NO];
+        self.gradient = boxarray([0.0; NI]);
+        self.gradient_bias = boxarray(0.0);
     }
     fn apply_gradient(&mut self, alpha: Float) {
         self.weights
@@ -92,15 +93,15 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
             });
     }
     fn rescale_gradient(&mut self, a: Float) {
-        self.gradient = self.gradient.scal_mul(a);
-        self.gradient_bias = self.gradient_bias.scal_mul(a);
+        self.gradient.mut_scal_mul(&a);
+        self.gradient_bias.mut_scal_mul(&a);
     }
     fn norm2_gradient(&self) -> Float {
         self.gradient.norm2()
     }
     fn add_gradient(&mut self, rhs: &Self) {
-        self.gradient = self.gradient.add(rhs.gradient);
-        self.gradient_bias = self.gradient_bias.add(rhs.gradient_bias);
+        self.gradient.mut_add(&rhs.gradient);
+        self.gradient_bias.mut_add(&rhs.gradient_bias);
     }
 }
 impl<const NI: usize, const NO: usize, A: BoundedActivation> BoundedNetwork<NI, NO>
