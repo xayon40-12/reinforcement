@@ -59,8 +59,15 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         &mut self,
         relaxation: Float,
         alpha: Float,
+        shape: Float,
         tasks_ctx: &mut [C; NC],
-        f: impl Fn(&mut C, &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>) -> Option<Score>
+        ctx_to_net: impl Fn(&C) -> [Float; NI],
+        f: impl Fn(
+            &mut C,
+            // &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
+            [Float; NO],
+        ) -> (Float, Option<Score>)
+        //WARNING: the Float must be the score for only the current step and it should not depend from previous ones
         + Send
         + Sync,
     ) where
@@ -73,7 +80,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
             .zip(nets.iter_mut())
             .for_each(|(ctx, net)| {
                 loop {
-                    let reward = f(ctx, net);
+                    let (_score, reward) = f(ctx, net.pert_forward(ctx_to_net(ctx), shape));
                     if let Some(reward) = reward {
                         net.normalize_gradient();
                         net.rescale_gradient(reward.diff().atan());

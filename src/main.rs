@@ -201,7 +201,7 @@ impl Content {
                 )
             });
             let sim = |(
-                score,
+                full_score,
                 trajectory,
                 (target, r),
                 pos,
@@ -211,6 +211,7 @@ impl Content {
                 ticks,
             ): &mut Ctx,
                        output: [Float; 2]| {
+                let mut score = 0.0;
                 *speed = speed.add(output.scal_mul(1e-1));
                 let next_pos = pos.add(*speed);
                 let mut collision = false;
@@ -228,42 +229,42 @@ impl Content {
 
                 for (o, r) in self.obstacles {
                     let d = pos.sub(o).norm2().sqrt() - r;
-                    *current_score -= 1e1 / (1.0 + d).powi(3);
+                    score -= 1e1 / (1.0 + d).powi(3);
                 }
-                *current_score -= speed.norm2().sqrt();
+                score -= speed.norm2().sqrt();
                 let d = target.sub(*pos).norm2().sqrt();
                 *min_d = min_d.min(d);
                 if *min_d < *r {
-                    *current_score -= speed.norm2();
+                    score -= speed.norm2();
                 }
-                *current_score -= d;
-                if *ticks >= MAX_TICKS {
-                    Some(score.update(*current_score))
-                } else {
-                    None
-                }
+                score -= d;
+                *current_score += score;
+                (
+                    score,
+                    if *ticks >= MAX_TICKS {
+                        Some(full_score.update(*current_score))
+                    } else {
+                        None
+                    },
+                )
+            };
+            let ctx_to_net = |ctx: &Ctx| {
+                let (_, _, (target, _), pos, speed, ..) = ctx;
+                [pos[0], pos[1], speed[0], speed[1], target[0], target[1]]
             };
             if self.learn {
-                self.net
-                    .reinforce(self.relaxation, self.alpha, &mut ctxs, |ctx, net| {
-                        let output = {
-                            let (_, _, (target, _), pos, speed, ..) = ctx;
-                            net.pert_forward(
-                                [pos[0], pos[1], speed[0], speed[1], target[0], target[1]],
-                                self.shape,
-                            )
-                        };
-                        sim(ctx, output)
-                    });
+                self.net.reinforce(
+                    self.relaxation,
+                    self.alpha,
+                    self.shape,
+                    &mut ctxs,
+                    ctx_to_net,
+                    sim,
+                );
             } else {
                 for ctx in ctxs.iter_mut() {
                     loop {
-                        let output = {
-                            let (_, _, (target, _), pos, speed, ..) = ctx;
-                            self.net
-                                .forward([pos[0], pos[1], speed[0], speed[1], target[0], target[1]])
-                        };
-                        if sim(ctx, output).is_some() {
+                        if sim(ctx, self.net.forward(ctx_to_net(ctx))).1.is_some() {
                             break;
                         }
                     }
