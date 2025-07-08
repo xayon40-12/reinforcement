@@ -59,8 +59,3 @@ pub trait BoundedNetwork<const NI: usize, const NO: usize>:
 {
     fn output_ranges(&self) -> [RangeInclusive<Float>; NO];
 }
-pub trait StochasticForwardNetwork<const NI: usize, const NO: usize>:
-    JoinNetwork<NI, OutA: BoundedActivation>
-{
-    fn pert_forward(&mut self, input: [Float; NI], shape: Float) -> [Float; NO];
-}

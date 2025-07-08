@@ -1,12 +1,10 @@
-use std::ops::{Deref, RangeInclusive};
+use std::ops::RangeInclusive;
 
 use array_vector_space::ArrayVectorSpace;
 use boxarray::boxarray;
 use rand_distr::Distribution;
 
-use super::{
-    BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network, StochasticForwardNetwork,
-};
+use super::{BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Score {
@@ -62,12 +60,8 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         shape: Float,
         tasks_ctx: &mut [(C, Score); NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
-        f: impl Fn(
-            &mut C,
-            // &mut dyn StochasticForwardNetwork<NI, NO, OutA = N::OutA>,
-            [Float; NO],
-        ) -> (Float, bool)
-        //WARNING: the Float must be the score for only the current step and it should not depend from previous ones
+        f: impl Fn(&mut C, [Float; NO]) -> (Float, bool)
+        //WARNING: the output Float must be the score for only the current step and it should not depend on previous ones
         + Send
         + Sync,
     ) where
@@ -95,22 +89,6 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         self.apply_gradient(alpha / NC as Float); // NOTE: divide by the number of added gradients
         self.reset_gradient();
     }
-}
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> JoinNetwork<NI>
-    for Reinforcement<NI, NO, N>
-{
-    type OutA = N::OutA;
-}
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> ForwardNetwork<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
-    fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
-        self.network.forward(input)
-    }
-}
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> StochasticForwardNetwork<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
     fn pert_forward(&mut self, input: [Float; NI], shape: Float) -> [Float; NO] {
         let probabilities = self.network.forward(input);
         let ranges = self.output_ranges();
@@ -126,6 +104,18 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> StochasticForw
         self.network
             .update_gradient(self.relaxation, target.sub(probabilities));
         target
+    }
+}
+impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> JoinNetwork<NI>
+    for Reinforcement<NI, NO, N>
+{
+    type OutA = N::OutA;
+}
+impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> ForwardNetwork<NI, NO>
+    for Reinforcement<NI, NO, N>
+{
+    fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
+        self.network.forward(input)
     }
 }
 impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Network<NI, NO>
