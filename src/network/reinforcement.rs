@@ -57,7 +57,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         &mut self,
         relaxation: Float,
         alpha: Float,
-        shape: Float,
+        sigma: Float,
         tasks_ctx: &mut [(C, Score); NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
         f: impl Fn(&mut C, [Float; NO]) -> (Float, bool)
@@ -75,7 +75,7 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
             .for_each(|((ctx, score), net)| {
                 let mut total_score = 0.0;
                 loop {
-                    let (step_score, done) = f(ctx, net.pert_forward(ctx_to_net(ctx), shape));
+                    let (step_score, done) = f(ctx, net.normal_forward(ctx_to_net(ctx), sigma));
                     total_score += step_score;
                     if done {
                         let reward = score.update(total_score);
@@ -89,17 +89,17 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         self.apply_gradient(alpha / NC as Float); // NOTE: divide by the number of added gradients
         self.reset_gradient();
     }
-    fn pert_forward(&mut self, input: [Float; NI], shape: Float) -> [Float; NO] {
+    fn normal_forward(&mut self, input: [Float; NI], sigma: Float) -> [Float; NO] {
         let probabilities = self.network.forward(input);
         let ranges = self.output_ranges();
         let target: [Float; NO] = std::array::from_fn(|i| {
             let r = ranges[i].clone();
+            let range = r.end() - *r.start();
             let p = probabilities[i];
-            rand_distr::Pert::new(*r.start(), *r.end())
-                .with_shape(shape)
-                .with_mode(p)
+            rand_distr::Normal::new(p, sigma / range)
                 .unwrap()
                 .sample(&mut rand::rng())
+                .clamp(*r.start(), *r.end())
         });
         self.network
             .update_gradient(self.relaxation, target.sub(probabilities));

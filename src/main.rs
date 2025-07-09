@@ -113,7 +113,7 @@ struct Content {
     net: Reinforcement<6, 2, Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 2, SigmoidSim>>>>,
     alpha: Float,
     relaxation: Float,
-    shape: Float,
+    sigma: Float,
     obstacles: [([Float; 2], Float); 44],
     targets: [([Float; 2], Float); 4],
     scores: [Score; 4],
@@ -125,6 +125,7 @@ struct Content {
     nb_reinforcement: usize,
     tot_reinforcement: usize,
     trajectory: [[([Float; 2], [Float; 2]); MAX_TICKS]; 4],
+    traj_ticks: [usize; 4],
 }
 
 impl Content {
@@ -154,7 +155,7 @@ impl Content {
             net: Default::default(),
             alpha: 1e-4,
             relaxation: 1e-4,
-            shape: 1e5,
+            sigma: 1e-2,
             obstacles,
             targets,
             starts,
@@ -166,11 +167,13 @@ impl Content {
             nb_reinforcement: 1,
             tot_reinforcement: 0,
             trajectory: [[([0.0; 2], [0.0; 2]); MAX_TICKS]; 4],
+            traj_ticks: [0; 4],
         };
         s.net.randomize();
         s
     }
     fn reset(&mut self) {
+        self.tot_reinforcement = 0;
         self.net.randomize();
         self.scores = [Score::default(); 4];
         self.poss = self.starts;
@@ -183,7 +186,6 @@ impl Content {
                 ([Float; 2], Float),
                 [Float; 2],
                 [Float; 2],
-                Float,
                 usize,
             );
             let mut ctxs: Box<[(Ctx, Score); 4]> = boxarray_(|((), i)| {
@@ -193,13 +195,12 @@ impl Content {
                         self.targets[i],
                         self.poss[i],
                         self.speeds[i],
-                        Float::MAX,
                         0,
                     ),
                     self.scores[i],
                 )
             });
-            let sim = |(trajectory, (target, r), pos, speed, min_d, ticks): &mut Ctx,
+            let sim = |(trajectory, (target, r), pos, speed, ticks): &mut Ctx,
                        output: [Float; 2]| {
                 let mut score = 0.0;
                 *speed = speed.add(output.scal_mul(1e-1));
@@ -220,15 +221,17 @@ impl Content {
                 for (o, r) in self.obstacles {
                     let d = pos.sub(o).norm2().sqrt() - r;
                     score -= 1e1 / (1.0 + d).powi(3);
+                    if next_pos.sub(o).norm2() < r * r {
+                        score -= 1e2 * speed.norm2();
+                    }
                 }
                 score -= speed.norm2().sqrt();
                 let d = target.sub(*pos).norm2().sqrt();
-                *min_d = min_d.min(d);
-                if *min_d < *r {
-                    score -= speed.norm2();
-                }
                 score -= d;
-                (score, *ticks >= MAX_TICKS)
+                if d < *r {
+                    score += 1e2;
+                }
+                (score, *ticks >= MAX_TICKS || d < *r)
             };
             let ctx_to_net = |ctx: &Ctx| {
                 let (_, (target, _), pos, speed, ..) = ctx;
@@ -238,7 +241,7 @@ impl Content {
                 self.net.reinforce(
                     self.relaxation,
                     self.alpha,
-                    self.shape,
+                    self.sigma,
                     &mut ctxs,
                     ctx_to_net,
                     sim,
@@ -252,9 +255,10 @@ impl Content {
                     }
                 }
             }
-            for (i, ((trajectory, (t, r), ..), score)) in (0..).zip(ctxs.into_iter()) {
+            for (i, ((trajectory, (t, r), .., ticks), score)) in (0..).zip(ctxs.into_iter()) {
                 self.scores[i] = score;
                 self.trajectory[i] = trajectory;
+                self.traj_ticks[i] = ticks;
                 let (n_pos, n_speed) = trajectory[0];
                 if n_pos.sub(t).norm2() < r * r {
                     self.poss[i] = self.starts[i];
@@ -312,9 +316,9 @@ impl eframe::App for Content {
                     .text("relaxation"),
             );
             ui.add(
-                egui::Slider::new(&mut self.shape, 1.0..=1e6)
+                egui::Slider::new(&mut self.sigma, 1e-6..=1e0)
                     .logarithmic(true)
-                    .text("shape"),
+                    .text("sigma"),
             );
 
             Frame::canvas(ui.style()).show(ui, |ui| {
@@ -334,14 +338,17 @@ impl eframe::App for Content {
                     Color32::from_rgb(0, 0, 255),
                     Color32::from_rgb(255, 192, 0),
                 ];
-                let shapes =
+                let sigmas =
                     self.trajectory
                         .iter()
+                        .zip(self.traj_ticks.iter())
                         .zip(colors.into_iter())
-                        .map(|(t, c)| {
+                        .map(|((t, n), c)| {
                             epaint::Shape::line(
-                                t.map(|([x, y], _)| to_screen * pos2(x as _, y as _))
-                                    .to_vec(),
+                                t.iter()
+                                    .take(*n)
+                                    .map(|&([x, y], _)| to_screen * pos2(x as _, y as _))
+                                    .collect(),
                                 PathStroke::new(5.0, c),
                             )
                         })
@@ -384,7 +391,7 @@ impl eframe::App for Content {
                                 }),
                         );
 
-                ui.painter().extend(shapes);
+                ui.painter().extend(sigmas);
             });
         });
         ctx.request_repaint();
