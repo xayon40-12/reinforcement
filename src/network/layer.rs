@@ -1,13 +1,8 @@
-use std::ops::RangeInclusive;
-
 use array_vector_space::{ArrayVectorSpace, ArrayVectorSpaceMut};
 use boxarray::boxarray;
 use rand::Rng;
 
-use super::{
-    BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network,
-    activation::{Activation, BoundedActivation},
-};
+use super::{Float, ForwardNetwork, JoinNetwork, Network, activation::Activation};
 
 #[derive(Clone)]
 pub struct Layer<const NI: usize, const NO: usize, A: Activation> {
@@ -103,11 +98,7 @@ impl<const NI: usize, const NO: usize, A: Activation> Network<NI, NO> for Layer<
         self.gradient.mut_add(&rhs.gradient);
         self.gradient_bias.mut_add(&rhs.gradient_bias);
     }
-}
-impl<const NI: usize, const NO: usize, A: BoundedActivation> BoundedNetwork<NI, NO>
-    for Layer<NI, NO, A>
-{
-    fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
+    fn output_ranges(&self) -> [(Option<Float>, Option<Float>); NO] {
         self.weights.map(|(_, _, a)| a.range())
     }
 }

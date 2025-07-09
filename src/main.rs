@@ -11,7 +11,7 @@ use reinforcement::network::{
     activation::{Id, Relu, SigmoidSim},
     layer::Layer,
     layers::Layers,
-    reinforcement::{Reinforcement, Score},
+    reinforcement::Reinforcement,
 };
 
 const MAX_TICKS: usize = 100;
@@ -110,13 +110,18 @@ fn main() {
 }
 
 struct Content {
-    net: Reinforcement<6, 2, Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 2, SigmoidSim>>>>,
+    net: Reinforcement<
+        6,
+        2,
+        Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 2, Id>>>,
+        Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 1, Id>>>,
+    >,
     alpha: Float,
+    alpha_score: Float,
     relaxation: Float,
     sigma: Float,
     obstacles: [([Float; 2], Float); 44],
     targets: [([Float; 2], Float); 4],
-    scores: [Score; 4],
     starts: [[Float; 2]; 4],
     poss: [[Float; 2]; 4],
     speeds: [[Float; 2]; 4],
@@ -153,9 +158,10 @@ impl Content {
         });
         let mut s = Content {
             net: Default::default(),
-            alpha: 1e-4,
+            alpha: 1e-2,
+            alpha_score: 1e-3,
             relaxation: 1e-4,
-            sigma: 1e-2,
+            sigma: 1e1,
             obstacles,
             targets,
             starts,
@@ -163,7 +169,6 @@ impl Content {
             speeds: [[0.0; 2]; 4],
             movement: false,
             learn: true,
-            scores: [Score::default(); 4],
             nb_reinforcement: 1,
             tot_reinforcement: 0,
             trajectory: [[([0.0; 2], [0.0; 2]); MAX_TICKS]; 4],
@@ -175,7 +180,6 @@ impl Content {
     fn reset(&mut self) {
         self.tot_reinforcement = 0;
         self.net.randomize();
-        self.scores = [Score::default(); 4];
         self.poss = self.starts;
         self.speeds = [[0.0; 2]; 4];
     }
@@ -188,23 +192,21 @@ impl Content {
                 [Float; 2],
                 usize,
             );
-            let mut ctxs: Box<[(Ctx, Score); 4]> = boxarray_(|((), i)| {
+            let mut ctxs: Box<[Ctx; 4]> = boxarray_(|((), i)| {
                 (
-                    (
-                        self.trajectory[i],
-                        self.targets[i],
-                        self.poss[i],
-                        self.speeds[i],
-                        0,
-                    ),
-                    self.scores[i],
+                    self.trajectory[i],
+                    self.targets[i],
+                    self.poss[i],
+                    self.speeds[i],
+                    0,
                 )
             });
             let sim = |(trajectory, (target, r), pos, speed, ticks): &mut Ctx,
                        output: [Float; 2]| {
                 let mut score = 0.0;
-                *speed = speed.add(output.scal_mul(1e-1));
-                let next_pos = pos.add(*speed);
+                let dt = 0.1;
+                *speed = speed.add(output.scal_mul(dt));
+                let next_pos = pos.add(speed.scal_mul(dt));
                 let mut collision = false;
                 for (o, r) in self.obstacles {
                     if next_pos.sub(o).norm2() < r * r {
@@ -218,6 +220,7 @@ impl Content {
                 trajectory[*ticks] = (*pos, *speed);
                 *ticks += 1;
 
+                let d = target.sub(*pos).norm2().sqrt();
                 for (o, r) in self.obstacles {
                     let d = pos.sub(o).norm2().sqrt() - r;
                     score -= 1e1 / (1.0 + d).powi(3);
@@ -225,11 +228,11 @@ impl Content {
                         score -= 1e2 * speed.norm2();
                     }
                 }
-                score -= speed.norm2().sqrt();
-                let d = target.sub(*pos).norm2().sqrt();
                 score -= d;
                 if d < *r {
                     score += 1e2;
+                } else {
+                    score += 1e0;
                 }
                 (score, *ticks >= MAX_TICKS || d < *r)
             };
@@ -241,13 +244,14 @@ impl Content {
                 self.net.reinforce(
                     self.relaxation,
                     self.alpha,
+                    self.alpha_score,
                     self.sigma,
                     &mut ctxs,
                     ctx_to_net,
                     sim,
                 );
             } else {
-                for (ctx, _) in ctxs.iter_mut() {
+                for ctx in ctxs.iter_mut() {
                     loop {
                         if sim(ctx, self.net.forward(ctx_to_net(ctx))).1 {
                             break;
@@ -255,8 +259,7 @@ impl Content {
                     }
                 }
             }
-            for (i, ((trajectory, (t, r), .., ticks), score)) in (0..).zip(ctxs.into_iter()) {
-                self.scores[i] = score;
+            for (i, (trajectory, (t, r), .., ticks)) in (0..).zip(ctxs.into_iter()) {
                 self.trajectory[i] = trajectory;
                 self.traj_ticks[i] = ticks;
                 let (n_pos, n_speed) = trajectory[0];
@@ -311,12 +314,17 @@ impl eframe::App for Content {
                     .text("alpha"),
             );
             ui.add(
+                egui::Slider::new(&mut self.alpha_score, 1e-10..=1e5)
+                    .logarithmic(true)
+                    .text("alpha_score"),
+            );
+            ui.add(
                 egui::Slider::new(&mut self.relaxation, 1e-5..=1.0)
                     .logarithmic(true)
                     .text("relaxation"),
             );
             ui.add(
-                egui::Slider::new(&mut self.sigma, 1e-6..=1e0)
+                egui::Slider::new(&mut self.sigma, 1e-6..=1e6)
                     .logarithmic(true)
                     .text("sigma"),
             );

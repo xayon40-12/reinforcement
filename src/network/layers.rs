@@ -1,9 +1,4 @@
-use std::ops::RangeInclusive;
-
-use super::{
-    BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network, activation::Activation,
-    layer::Layer,
-};
+use super::{Float, ForwardNetwork, JoinNetwork, Network, activation::Activation, layer::Layer};
 
 #[derive(Default, Clone)]
 pub struct Layers<const NI: usize, const NH: usize, A: Activation, O: JoinNetwork<NH>> {
@@ -56,11 +51,7 @@ impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: Networ
         self.layer_in.add_gradient(&rhs.layer_in);
         self.layer_out.add_gradient(&rhs.layer_out);
     }
-}
-impl<const NI: usize, const NH: usize, const NO: usize, A: Activation, O: BoundedNetwork<NH, NO>>
-    BoundedNetwork<NI, NO> for Layers<NI, NH, A, O>
-{
-    fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
+    fn output_ranges(&self) -> [(Option<Float>, Option<Float>); NO] {
         self.layer_out.output_ranges()
     }
 }

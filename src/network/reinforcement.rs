@@ -1,10 +1,13 @@
-use std::ops::RangeInclusive;
-
 use array_vector_space::ArrayVectorSpace;
 use boxarray::boxarray;
 use rand_distr::Distribution;
 
-use super::{BoundedNetwork, Float, ForwardNetwork, JoinNetwork, Network};
+use crate::network::activation::Sigmoid;
+
+use super::{
+    Float, ForwardNetwork, JoinNetwork, Network,
+    activation::{Activation, Id},
+};
 
 #[derive(Copy, Clone, Default, Debug)]
 pub struct Score {
@@ -48,17 +51,30 @@ impl Score {
 }
 
 #[derive(Default, Clone)]
-pub struct Reinforcement<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> {
+pub struct Reinforcement<
+    const NI: usize,
+    const NO: usize,
+    N: Network<NI, NO>,
+    S: Network<NI, 1, OutA = Id>,
+> {
     network: N,
+    score_network: S,
     relaxation: Float,
 }
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<NI, NO, N> {
+impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, OutA = Id>>
+    Reinforcement<NI, NO, N, S>
+{
+    pub fn randomize(&mut self) {
+        self.network.randomize();
+        self.score_network.randomize();
+    }
     pub fn reinforce<const NC: usize, C: Send + Sync>(
         &mut self,
         relaxation: Float,
         alpha: Float,
+        alpha_score: Float,
         sigma: Float,
-        tasks_ctx: &mut [(C, Score); NC],
+        tasks_ctx: &mut [C; NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
         f: impl Fn(&mut C, [Float; NO]) -> (Float, bool)
         //WARNING: the output Float must be the score for only the current step and it should not depend on previous ones
@@ -72,83 +88,59 @@ impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Reinforcement<
         tasks_ctx
             .iter_mut()
             .zip(nets.iter_mut())
-            .for_each(|((ctx, score), net)| {
+            .for_each(|(ctx, net)| {
                 let mut total_score = 0.0;
+                let [prediction_score] = net.score_network.forward(ctx_to_net(ctx));
                 loop {
-                    let (step_score, done) = f(ctx, net.normal_forward(ctx_to_net(ctx), sigma));
+                    let action = net.normal_forward(ctx_to_net(ctx), sigma);
+                    let (step_score, done) = f(ctx, action);
                     total_score += step_score;
                     if done {
-                        let reward = score.update(total_score);
-                        net.normalize_gradient();
-                        net.rescale_gradient(reward.diff().atan());
+                        let reward = total_score - prediction_score;
+                        net.score_network.update_gradient(1.0, [reward]);
+                        net.score_network.normalize_gradient();
+                        net.network.normalize_gradient();
+                        net.network.rescale_gradient(Sigmoid.apply(reward));
                         break;
                     }
                 }
             });
-        nets.into_iter().for_each(|net| self.add_gradient(&net));
-        self.apply_gradient(alpha / NC as Float); // NOTE: divide by the number of added gradients
-        self.reset_gradient();
+        nets.into_iter().for_each(|net| {
+            self.network.add_gradient(&net.network);
+            self.score_network.add_gradient(&net.score_network);
+        });
+        self.network.apply_gradient(alpha / NC as Float);
+        self.score_network.apply_gradient(alpha_score / NC as Float);
+        self.network.reset_gradient();
+        self.score_network.reset_gradient();
     }
     fn normal_forward(&mut self, input: [Float; NI], sigma: Float) -> [Float; NO] {
         let probabilities = self.network.forward(input);
-        let ranges = self.output_ranges();
+        let ranges = self.network.output_ranges();
         let target: [Float; NO] = std::array::from_fn(|i| {
-            let r = ranges[i].clone();
-            let range = r.end() - *r.start();
+            let (min, max) = ranges[i];
+            let min = min.unwrap_or(Float::NEG_INFINITY);
+            let max = max.unwrap_or(Float::INFINITY);
             let p = probabilities[i];
-            rand_distr::Normal::new(p, sigma / range)
+            rand_distr::Normal::new(p, sigma)
                 .unwrap()
                 .sample(&mut rand::rng())
-                .clamp(*r.start(), *r.end())
+                .clamp(min, max)
         });
         self.network
             .update_gradient(self.relaxation, target.sub(probabilities));
         target
     }
 }
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> JoinNetwork<NI>
-    for Reinforcement<NI, NO, N>
+impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, OutA = Id>>
+    JoinNetwork<NI> for Reinforcement<NI, NO, N, S>
 {
     type OutA = N::OutA;
 }
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> ForwardNetwork<NI, NO>
-    for Reinforcement<NI, NO, N>
+impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, OutA = Id>>
+    ForwardNetwork<NI, NO> for Reinforcement<NI, NO, N, S>
 {
     fn forward(&mut self, input: [Float; NI]) -> [Float; NO] {
         self.network.forward(input)
-    }
-}
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> Network<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
-    fn randomize(&mut self) {
-        self.network.randomize();
-    }
-    fn update_gradient(&mut self, relaxation: Float, delta: [Float; NO]) -> [Float; NI] {
-        self.network.update_gradient(relaxation, delta)
-    }
-
-    fn reset_gradient(&mut self) {
-        self.network.reset_gradient();
-    }
-
-    fn apply_gradient(&mut self, alpha: Float) {
-        self.network.apply_gradient(alpha);
-    }
-    fn rescale_gradient(&mut self, a: Float) {
-        self.network.rescale_gradient(a);
-    }
-    fn norm2_gradient(&self) -> Float {
-        self.network.norm2_gradient()
-    }
-    fn add_gradient(&mut self, rhs: &Self) {
-        self.network.add_gradient(&rhs.network);
-    }
-}
-impl<const NI: usize, const NO: usize, N: BoundedNetwork<NI, NO>> BoundedNetwork<NI, NO>
-    for Reinforcement<NI, NO, N>
-{
-    fn output_ranges(&self) -> [RangeInclusive<Float>; NO] {
-        self.network.output_ranges()
     }
 }

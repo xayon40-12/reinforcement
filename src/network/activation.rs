@@ -1,14 +1,11 @@
-use std::ops::RangeInclusive;
-
 use super::Float;
 
 pub trait Activation: Default + Copy {
     fn apply(&self, x: Float) -> Float;
     fn derivative(&self, x: Float) -> Float;
-}
-
-pub trait BoundedActivation: Activation {
-    fn range(&self) -> RangeInclusive<Float>;
+    fn range(&self) -> (Option<Float>, Option<Float>) {
+        (None, None)
+    }
 }
 
 #[derive(Copy, Clone, Default, Debug)]
@@ -30,6 +27,9 @@ impl Activation for Relu {
     fn derivative(&self, input: Float) -> Float {
         input.signum().max(0.0)
     }
+    fn range(&self) -> (Option<Float>, Option<Float>) {
+        (Some(0.0), None)
+    }
 }
 
 #[derive(Copy, Clone, Default, Debug)]
@@ -46,10 +46,8 @@ impl Activation for SigmoidSim {
             2.0 * e / (1.0 + e).powi(2)
         }
     }
-}
-impl BoundedActivation for SigmoidSim {
-    fn range(&self) -> RangeInclusive<Float> {
-        -1.0..=1.0
+    fn range(&self) -> (Option<Float>, Option<Float>) {
+        (Some(-1.0), Some(1.0))
     }
 }
 
@@ -67,9 +65,7 @@ impl Activation for Sigmoid {
             e / (1.0 + e).powi(2)
         }
     }
-}
-impl BoundedActivation for Sigmoid {
-    fn range(&self) -> RangeInclusive<Float> {
-        0.0..=1.0
+    fn range(&self) -> (Option<Float>, Option<Float>) {
+        (Some(0.0), Some(1.0))
     }
 }

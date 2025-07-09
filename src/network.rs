@@ -1,6 +1,4 @@
-use std::ops::RangeInclusive;
-
-use activation::{Activation, BoundedActivation};
+use activation::Activation;
 
 pub mod activation;
 pub mod layer;
@@ -53,9 +51,5 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> + Cl
             }
         }
     }
-}
-pub trait BoundedNetwork<const NI: usize, const NO: usize>:
-    Network<NI, NO, OutA: BoundedActivation>
-{
-    fn output_ranges(&self) -> [RangeInclusive<Float>; NO];
+    fn output_ranges(&self) -> [(Option<Float>, Option<Float>); NO];
 }
