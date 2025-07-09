@@ -8,7 +8,7 @@ use egui::{
 };
 use reinforcement::network::{
     Float, ForwardNetwork, Network,
-    activation::{Id, Relu, SigmoidSim},
+    activation::{Id, Relu},
     layer::Layer,
     layers::Layers,
     reinforcement::Reinforcement,

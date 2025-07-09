@@ -1,5 +1,4 @@
 use array_vector_space::ArrayVectorSpace;
-use boxarray::boxarray;
 use rand_distr::Distribution;
 
 use crate::network::activation::Sigmoid;
@@ -84,7 +83,9 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         Self: Sized + Send + Sync,
     {
         self.relaxation = relaxation;
-        let mut nets: Box<[Self; NC]> = boxarray(self.clone());
+
+        // let mut nets: Box<[Self; NC]> = boxarray(self.clone()); //FIXME: this fails in wasm with "memory access out of bounds" and "Uncaught TypeError: Cannot read properties of null (reading 'querySelector')"
+        let mut nets: Vec<Self> = vec![self.clone(); NC];
         tasks_ctx
             .iter_mut()
             .zip(nets.iter_mut())
