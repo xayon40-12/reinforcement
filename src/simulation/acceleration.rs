@@ -88,7 +88,7 @@ impl Sim {
     pub fn new() -> Self {
         let meta_parameters = MetaParameters {
             alpha: 1e-2,
-            alpha_score: 1e-3,
+            alpha_score: 1e-1,
             relaxation: 1e-4,
             sigma: 1e1,
         };
