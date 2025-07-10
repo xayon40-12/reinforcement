@@ -12,8 +12,8 @@
     <!-- config for our rust wasm binary. go to https://trunkrs.dev/assets/#rust for more customization -->
     
 <script type="module">
-import init, * as bindings from 'https://xayon40-12.github.io/reinforcement/reinforcement-7988eb8c09d7c610.js';
-const wasm = await init({ module_or_path: 'https://xayon40-12.github.io/reinforcement/reinforcement-7988eb8c09d7c610_bg.wasm' });
+import init, * as bindings from 'https://xayon40-12.github.io/reinforcement/reinforcement-d61d5bb26e6b7a16.js';
+const wasm = await init({ module_or_path: 'https://xayon40-12.github.io/reinforcement/reinforcement-d61d5bb26e6b7a16_bg.wasm' });
 
 
 window.wasmBindings = bindings;
@@ -126,7 +126,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
             }
         }
     </style>
-<link rel="modulepreload" href="https://xayon40-12.github.io/reinforcement/reinforcement-7988eb8c09d7c610.js" crossorigin="anonymous" integrity="sha384-fiVoAhwzKFkQGf5vIBHiybWPF6NhSI23kmPTMRx+vz0bnxG5VPrymJECOqX2GbnQ"><link rel="preload" href="https://xayon40-12.github.io/reinforcement/reinforcement-7988eb8c09d7c610_bg.wasm" crossorigin="anonymous" integrity="sha384-ZJZ8YtvZpommtCn7/ssHYkyvZS14M44oxs4osjKjsGhsuAoADhj5D3YU/G9HNL1y" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="https://xayon40-12.github.io/reinforcement/reinforcement-d61d5bb26e6b7a16.js" crossorigin="anonymous" integrity="sha384-fiVoAhwzKFkQGf5vIBHiybWPF6NhSI23kmPTMRx+vz0bnxG5VPrymJECOqX2GbnQ"><link rel="preload" href="https://xayon40-12.github.io/reinforcement/reinforcement-d61d5bb26e6b7a16_bg.wasm" crossorigin="anonymous" integrity="sha384-fQS9aNY9de0+qiRGAW1IyUfiuGoqDLBGC+sK9ow1QZD643+uLVMo1gGw9F9DOsUX" as="fetch" type="application/wasm"></head>
 
 <body>
     <!-- The WASM code will resize the canvas dynamically -->
