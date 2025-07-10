@@ -75,7 +75,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         sigma: Float,
         tasks_ctx: &mut [C; NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
-        f: impl Fn(&mut C, [Float; NO]) -> (Float, bool)
+        f: impl Fn(usize, &mut C, [Float; NO]) -> (Float, bool)
         //WARNING: the output Float must be the score for only the current step and it should not depend on previous ones
         + Send
         + Sync,
@@ -92,9 +92,9 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
             .for_each(|(ctx, net)| {
                 let mut total_score = 0.0;
                 let [prediction_score] = net.score_network.forward(ctx_to_net(ctx));
-                loop {
+                for i in 0.. {
                     let action = net.normal_forward(ctx_to_net(ctx), sigma);
-                    let (step_score, done) = f(ctx, action);
+                    let (step_score, done) = f(i, ctx, action);
                     total_score += step_score;
                     if done {
                         let reward = total_score - prediction_score;
@@ -120,9 +120,10 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         let ranges = self.network.output_ranges();
         let target: [Float; NO] = std::array::from_fn(|i| {
             let (min, max) = ranges[i];
-            let min = min.unwrap_or(Float::NEG_INFINITY);
-            let max = max.unwrap_or(Float::INFINITY);
             let p = probabilities[i];
+            let nr = 10.0 * sigma; // NOTE: use to clamp to 10 sigma to avoid infinities
+            let min = min.unwrap_or(Float::NEG_INFINITY).max(p - nr);
+            let max = max.unwrap_or(Float::INFINITY).min(p + nr);
             rand_distr::Normal::new(p, sigma)
                 .unwrap()
                 .sample(&mut rand::rng())
