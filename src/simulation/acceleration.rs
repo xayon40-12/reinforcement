@@ -165,6 +165,7 @@ impl Sim {
             &self.speeds,
         );
         for (ctx, (trajectory, ticks)) in ctxs.iter_mut().zip(trajectories.iter_mut()) {
+            *ticks = MAX_TICKS;
             for i in 0..MAX_TICKS {
                 let done = sim(i, ctx, self.net.forward(ctx_to_net(ctx))).1;
                 let (_, _, pos, speed) = ctx;
