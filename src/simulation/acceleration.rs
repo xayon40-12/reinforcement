@@ -1,6 +1,6 @@
 use array_vector_space::ArrayVectorSpace;
 use boxarray::boxarray_;
-use egui::{Color32, Shape, Stroke, emath::RectTransform, epaint::PathStroke, pos2};
+use egui::{Color32, Rect, Shape, Stroke, emath::RectTransform, epaint::PathStroke, pos2};
 
 use crate::network::{
     Float, ForwardNetwork,
@@ -295,6 +295,13 @@ impl Simulation<4, Param> for Sim {
             }
         }
         None
+    }
+
+    fn render_rect(&self) -> Rect {
+        Rect {
+            min: pos2(-200.0, -200.0),
+            max: pos2(200.0, 200.0),
+        }
     }
 
     fn parameters(&self) -> [Parameter<Param>; 4] {

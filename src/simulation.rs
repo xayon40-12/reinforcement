@@ -35,11 +35,14 @@ pub struct UpadeParameter<T> {
 }
 
 pub trait Simulation<const NP: usize, T: Tag>: Send + 'static {
+    /// The output Rect is the rendering Rcet
+    fn render_rect(&self) -> Rect;
     fn parameters(&self) -> [Parameter<T>; NP];
     fn handle_request(&mut self, request: Request<T>) -> Option<Reply>;
 }
 
 pub struct SimulationGUI<const NP: usize, T: Tag, S: Simulation<NP, T>, FS: Fn() -> S> {
+    render_rect: Rect,
     parameters: [Parameter<T>; NP],
     simulation_request_tx: Sender<Request<T>>,
     simulation_reply_rx: Receiver<Reply>,
@@ -96,9 +99,11 @@ fn handler<const NP: usize, T: Tag, S: Simulation<NP, T>>(
 impl<const NP: usize, T: Tag, S: Simulation<NP, T>, FS: Fn() -> S> SimulationGUI<NP, T, S, FS> {
     pub fn new(create_simulation: FS) -> Self {
         let simulation = create_simulation();
+        let render_rect = simulation.render_rect();
         let parameters = simulation.parameters();
         let (simulation_request_tx, simulation_reply_rx) = handler(simulation);
         SimulationGUI {
+            render_rect,
             parameters,
             simulation_request_tx,
             simulation_reply_rx,
@@ -147,7 +152,10 @@ impl<const NP: usize, T: Tag, S: Simulation<NP, T>, FS: Fn() -> S> eframe::App
                 let (_id, rect) = ui.allocate_space(desired_size);
 
                 let to_screen = RectTransform::from_to(
-                    Rect::from_x_y_ranges(-200.0 * rx..=200.0 * rx, -200.0 * ry..=200.0 * ry),
+                    Rect::from_x_y_ranges(
+                        self.render_rect.min.x * rx..=self.render_rect.max.x * rx,
+                        self.render_rect.min.y * ry..=self.render_rect.max.y * ry,
+                    ),
                     rect,
                 );
                 requests.push(Request::Render(to_screen));
