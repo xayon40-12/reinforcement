@@ -8,45 +8,12 @@ use super::{
     activation::{Activation, Id},
 };
 
-#[derive(Copy, Clone, Default, Debug)]
-pub struct Score {
-    last: Float,
-    diff: Float,
-    mean: Float,
-    var: Float,
-}
-impl Score {
-    pub fn new(mean: Float) -> Score {
-        Score {
-            last: mean,
-            diff: 0.0,
-            mean,
-            var: 1.0,
-        }
-    }
-
-    pub fn update(&mut self, score: Float) -> Self {
-        self.last = score;
-        self.diff = score - self.mean;
-        self.mean += 0.5 * self.diff;
-        let a = 1e-4;
-        self.var = (1.0 - a) * self.var + a * self.diff.powi(2);
-        *self
-    }
-
-    pub fn sigma(&self) -> Float {
-        self.var.sqrt()
-    }
-
-    pub fn last(&self) -> Float {
-        self.last
-    }
-    pub fn mean(&self) -> Float {
-        self.mean
-    }
-    pub fn diff(&self) -> Float {
-        self.diff
-    }
+#[derive(Clone, Copy, Debug)]
+pub struct MetaParameters {
+    pub alpha: Float,
+    pub alpha_score: Float,
+    pub relaxation: Float,
+    pub sigma: Float,
 }
 
 #[derive(Default, Clone)]
@@ -69,10 +36,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
     }
     pub fn reinforce<const NC: usize, C: Send + Sync>(
         &mut self,
-        relaxation: Float,
-        alpha: Float,
-        alpha_score: Float,
-        sigma: Float,
+        meta_parameters: MetaParameters,
         tasks_ctx: &mut [C; NC],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
         f: impl Fn(usize, &mut C, [Float; NO]) -> (Float, bool)
@@ -82,7 +46,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
     ) where
         Self: Sized + Send + Sync,
     {
-        self.relaxation = relaxation;
+        self.relaxation = meta_parameters.relaxation;
 
         // let mut nets: Box<[Self; NC]> = boxarray(self.clone()); //FIXME: this fails in wasm with "memory access out of bounds" and "Uncaught TypeError: Cannot read properties of null (reading 'querySelector')"
         let mut nets: Vec<Self> = vec![self.clone(); NC];
@@ -93,7 +57,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
                 let mut total_score = 0.0;
                 let [prediction_score] = net.score_network.forward(ctx_to_net(ctx));
                 for i in 0.. {
-                    let action = net.normal_forward(ctx_to_net(ctx), sigma);
+                    let action = net.normal_forward(ctx_to_net(ctx), meta_parameters.sigma);
                     let (step_score, done) = f(i, ctx, action);
                     total_score += step_score;
                     if done {
@@ -110,8 +74,10 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
             self.network.add_gradient(&net.network);
             self.score_network.add_gradient(&net.score_network);
         });
-        self.network.apply_gradient(alpha / NC as Float);
-        self.score_network.apply_gradient(alpha_score / NC as Float);
+        self.network
+            .apply_gradient(meta_parameters.alpha / NC as Float);
+        self.score_network
+            .apply_gradient(meta_parameters.alpha_score / NC as Float);
         self.network.reset_gradient();
         self.score_network.reset_gradient();
     }
