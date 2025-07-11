@@ -137,23 +137,20 @@ fn handler<S: Simulation>(mut simulation: S) -> (Sender<Request<S::Tag>>, Receiv
         let request = match request_rx.try_next() {
             Ok(Some(request)) => request,
             Ok(None) => {
-                return;
+                return false;
             }
             Err(_) => Request::Reinforce,
         };
         if let Some(reply) = simulation.handle_request(request) {
             if let Err(err) = reply_tx.try_send(reply) {
                 log::log!(log::Level::Error, "{err}");
-                return;
+                return false;
             }
         }
+        true
     };
     #[cfg(not(target_arch = "wasm32"))]
-    std::thread::spawn(move || {
-        loop {
-            main_logic();
-        }
-    });
+    std::thread::spawn(move || while main_logic() {});
     #[cfg(target_arch = "wasm32")]
     wasm_bindgen_futures::spawn_local(async move {
         loop {
