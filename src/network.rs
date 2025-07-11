@@ -25,6 +25,32 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> + Cl
         self.rescale_gradient(self.norm2_gradient().sqrt().recip());
     }
     fn add_gradient(&mut self, rhs: &Self);
+
+    // use reinforcement::network::{Network, activation::Id, layer::Layer, layers::Layers};
+    // let mut net: Layers<2, 3, Id, Layer<3, 1, Id>> = Default::default();
+    //  net.train(
+    //      1000,
+    //      1e-2,
+    //      &[
+    //          ([0.0, 0.0], [0.0]),
+    //          ([0.0, 1.0], [1.0]),
+    //          ([1.0, 1.0], [2.0]),
+    //          ([1.0, 0.0], [1.0]),
+    //          ([-1.0, -6.0], [-7.0]),
+    //          ([-1.0, 6.0], [5.0]),
+    //      ],
+    //  );
+    //  let mut net: Layers<2, 2, Id, Layer<2, 1, Id>> = Default::default();
+    //  net.train(
+    //      100,
+    //      1e-1,
+    //      &[
+    //          ([0.0, 0.0], [0.0]),
+    //          ([0.0, 1.0], [1.0]),
+    //          ([1.0, 1.0], [0.0]),
+    //          ([1.0, 0.0], [1.0]),
+    //      ],
+    //  );
     fn train(
         &mut self,
         iterations: usize,
@@ -39,8 +65,7 @@ pub trait Network<const NI: usize, const NO: usize>: ForwardNetwork<NI, NO> + Cl
                 if i % (iterations / 10) == 0 {
                     print!("{outputs:?} ");
                 }
-                let normalization = (2.0 * NO as Float).recip();
-                let delta = std::array::from_fn(|i| normalization * (targets[i] - outputs[i]));
+                let delta = std::array::from_fn(|i| (targets[i] - outputs[i]));
                 error += delta.iter().map(|d| d * d).sum::<Float>();
                 self.update_gradient(1.0, delta);
                 self.normalize_gradient();
