@@ -20,7 +20,7 @@ pub trait Reinforce {
     type ActionIn;
     type ActionOut;
     fn forward(&mut self, action_in: Self::ActionIn) -> Self::ActionOut;
-    fn reinforce<C>(
+    fn reinforce<C: Clone>(
         &mut self,
         meta_parameters: MetaParameters,
         ctx_list: &mut [C],
@@ -62,8 +62,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
                 .sample(&mut rand::rng())
                 .clamp(min, max)
         });
-        self.network
-            .update_gradient(self.relaxation, target.sub(probabilities));
+        self.network.update_gradient(1.0, target.sub(probabilities));
         target
     }
 }
@@ -73,7 +72,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
 {
     type ActionIn = [Float; NI];
     type ActionOut = [Float; NO];
-    fn reinforce<C>(
+    fn reinforce<C: Clone>(
         &mut self,
         meta_parameters: MetaParameters,
         ctx_list: &mut [C],
@@ -83,32 +82,57 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
     ) {
         self.relaxation = meta_parameters.relaxation;
 
-        // let mut nets: Box<[Self; NC]> = boxarray(self.clone()); //FIXME: this fails in wasm with "memory access out of bounds" and "Uncaught TypeError: Cannot read properties of null (reading 'querySelector')"
-        let mut nets: Vec<Self> = ctx_list.iter().map(|_| self.clone()).collect();
+        let clone_self = {
+            let mut reinforcement = self.clone();
+            reinforcement.network.reset_gradient();
+            move || reinforcement.clone()
+        };
         ctx_list
             .iter_mut()
-            .zip(nets.iter_mut())
-            .for_each(|(ctx, net)| {
-                let mut total_score = 0.0;
-                let [prediction_score] = net.score_network.forward(ctx_to_action_in(ctx));
+            .map(|ctx| {
+                let mut evolution = Vec::with_capacity(max_iter);
                 for _ in 0..max_iter {
-                    let action = net.normal_forward(ctx_to_action_in(ctx), meta_parameters.sigma);
+                    let mut reinforcement = clone_self();
+                    let action_in = ctx_to_action_in(ctx);
+                    let action = reinforcement.normal_forward(action_in, meta_parameters.sigma);
                     let (step_score, done) = physics_cost(ctx, action);
-                    total_score += step_score;
+                    evolution.push((step_score, reinforcement, action_in));
                     if done {
                         break;
                     }
                 }
-                let reward = total_score - prediction_score;
-                net.score_network.update_gradient(1.0, [reward]);
-                net.score_network.normalize_gradient();
-                net.network.normalize_gradient();
-                net.network.rescale_gradient(Sigmoid.apply(reward));
+                let (final_rein, _) = evolution.into_iter().rev().fold(
+                    (clone_self(), 0.0),
+                    |(mut final_rein, mut discounted_score),
+                     (step_score, mut reinforcement, action_in)| {
+                        discounted_score =
+                            meta_parameters.relaxation * discounted_score + step_score;
+
+                        let [prediciton] = reinforcement.score_network.forward(action_in);
+                        let reward = discounted_score - prediciton;
+
+                        reinforcement
+                            .network
+                            .rescale_gradient(Sigmoid.apply(reward));
+                        reinforcement.score_network.update_gradient(1.0, [reward]);
+
+                        final_rein.network.add_gradient(&reinforcement.network);
+                        final_rein
+                            .score_network
+                            .add_gradient(&reinforcement.score_network);
+
+                        (final_rein, discounted_score)
+                    },
+                );
+                final_rein
+            })
+            .for_each(|mut cumulated_rein| {
+                cumulated_rein.network.normalize_gradient();
+                cumulated_rein.score_network.normalize_gradient();
+                self.network.add_gradient(&cumulated_rein.network);
+                self.score_network
+                    .add_gradient(&cumulated_rein.score_network);
             });
-        nets.into_iter().for_each(|net| {
-            self.network.add_gradient(&net.network);
-            self.score_network.add_gradient(&net.score_network);
-        });
         self.network
             .apply_gradient(meta_parameters.alpha / ctx_list.len() as Float);
         self.score_network

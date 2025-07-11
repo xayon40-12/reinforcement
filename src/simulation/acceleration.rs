@@ -16,8 +16,8 @@ use super::{Parameter, Simulation, Tag, UpadeParameter};
 type Net = Reinforcement<
     6,
     2,
-    Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 2, Id>>>,
-    Layers<6, 16, Relu, Layers<16, 16, Relu, Layer<16, 1, Id>>>,
+    Layers<6, 128, Relu, Layers<128, 128, Relu, Layer<128, 2, Id>>>,
+    Layers<6, 128, Relu, Layers<128, 128, Relu, Layer<128, 1, Id>>>,
 >;
 
 #[derive(Clone, Copy)]
@@ -47,9 +47,9 @@ pub struct Acceleration {
 impl Acceleration {
     pub fn new() -> Self {
         let meta_parameters = MetaParameters {
-            alpha: 1e-2,
+            alpha: 1e-1,
             alpha_score: 1e-1,
-            relaxation: 1e-4,
+            relaxation: 1e-1,
             sigma: 1e1,
         };
         let targets = [
@@ -199,16 +199,16 @@ impl Simulation for Acceleration {
         let mut score = 0.0;
 
         let d = ctx.target.pos.sub(ctx.pos).norm2().sqrt();
-        for Circle { pos, radius } in ctx.obstacles.iter() {
-            let d = ctx.pos.sub(*pos).norm2().sqrt() - radius;
-            score -= 1e1 / (1.0 + d).powi(3);
-        }
-        score -= d;
+        // for Circle { pos, radius } in ctx.obstacles.iter() {
+        //     let d = ctx.pos.sub(*pos).norm2().sqrt() - radius;
+        //     score -= 1e1 / (1.0 + d).powi(3);
+        // }
+        // score -= d;
         let reached_target = d < ctx.target.radius;
         if reached_target {
             score += 1e2;
         } else {
-            score -= 1e0;
+            score -= d;
         }
         (score, reached_target)
     }
@@ -222,7 +222,7 @@ impl Simulation for Acceleration {
         acceleration: [Float; 2],
     ) {
         let dt = 0.1;
-        *speed = speed.add(acceleration.scal_mul(dt).clamp(-1.0, 1.0));
+        *speed = speed.add(acceleration.scal_mul(dt)); //.clamp(-1.0, 1.0));
         let next_pos = pos.add(speed.scal_mul(dt));
         let mut collision = false;
         for Circle { pos, radius } in obstacles.iter() {
