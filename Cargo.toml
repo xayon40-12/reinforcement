@@ -8,6 +8,7 @@ rand = "0.9"
 rand_distr = "0.5"
 getrandom = { version = "0.3", features = ["wasm_js"]}
 array_vector_space = {git = "https://github.com/xayon40-12/array_vector_space.git"}
+# array_vector_space = {path = "../array_vector_space"}
 instant = { version = "0.1", features = ["wasm-bindgen"], default-features = false }
 eframe = { version = "0.31" }
 egui = { version = "0.31" }

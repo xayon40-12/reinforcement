@@ -1,4 +1,5 @@
 use array_vector_space::ArrayVectorSpace;
+use rand::seq::IndexedRandom;
 use rand_distr::Distribution;
 
 use crate::network::activation::Sigmoid;
@@ -34,12 +35,13 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         self.network.randomize();
         self.score_network.randomize();
     }
-    pub fn reinforce<const NC: usize, C: Send + Sync>(
+    pub fn reinforce<C: Send + Sync>(
         &mut self,
         meta_parameters: MetaParameters,
-        tasks_ctx: &mut [C; NC],
+        tasks_ctx: &mut [C],
         ctx_to_net: impl Fn(&C) -> [Float; NI],
-        f: impl Fn(usize, &mut C, [Float; NO]) -> (Float, bool)
+        max_iter: usize,
+        f: impl Fn(&mut C, [Float; NO]) -> (Float, bool)
         //WARNING: the output Float must be the score for only the current step and it should not depend on previous ones
         + Send
         + Sync,
@@ -49,35 +51,35 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         self.relaxation = meta_parameters.relaxation;
 
         // let mut nets: Box<[Self; NC]> = boxarray(self.clone()); //FIXME: this fails in wasm with "memory access out of bounds" and "Uncaught TypeError: Cannot read properties of null (reading 'querySelector')"
-        let mut nets: Vec<Self> = vec![self.clone(); NC];
+        let mut nets: Vec<Self> = tasks_ctx.iter().map(|_| self.clone()).collect();
         tasks_ctx
             .iter_mut()
             .zip(nets.iter_mut())
             .for_each(|(ctx, net)| {
                 let mut total_score = 0.0;
                 let [prediction_score] = net.score_network.forward(ctx_to_net(ctx));
-                for i in 0.. {
+                for _ in 0..max_iter {
                     let action = net.normal_forward(ctx_to_net(ctx), meta_parameters.sigma);
-                    let (step_score, done) = f(i, ctx, action);
+                    let (step_score, done) = f(ctx, action);
                     total_score += step_score;
                     if done {
-                        let reward = total_score - prediction_score;
-                        net.score_network.update_gradient(1.0, [reward]);
-                        net.score_network.normalize_gradient();
-                        net.network.normalize_gradient();
-                        net.network.rescale_gradient(Sigmoid.apply(reward));
                         break;
                     }
                 }
+                let reward = total_score - prediction_score;
+                net.score_network.update_gradient(1.0, [reward]);
+                net.score_network.normalize_gradient();
+                net.network.normalize_gradient();
+                net.network.rescale_gradient(Sigmoid.apply(reward));
             });
         nets.into_iter().for_each(|net| {
             self.network.add_gradient(&net.network);
             self.score_network.add_gradient(&net.score_network);
         });
         self.network
-            .apply_gradient(meta_parameters.alpha / NC as Float);
+            .apply_gradient(meta_parameters.alpha / tasks_ctx.len() as Float);
         self.score_network
-            .apply_gradient(meta_parameters.alpha_score / NC as Float);
+            .apply_gradient(meta_parameters.alpha_score / tasks_ctx.len() as Float);
         self.network.reset_gradient();
         self.score_network.reset_gradient();
     }

@@ -39,6 +39,11 @@ pub trait Simulation<const NP: usize, T: Tag>: Send + 'static {
     fn render_rect(&self) -> Rect;
     fn parameters(&self) -> [Parameter<T>; NP];
     fn handle_request(&mut self, request: Request<T>) -> Option<Reply>;
+    type Ctx;
+    fn score_goal(ctx: &Self::Ctx) -> (Float, bool);
+    type Action;
+    fn physics(ctx: &mut Self::Ctx, action: Self::Action);
+    fn max_iteration() -> usize;
 }
 
 pub struct SimulationGUI<const NP: usize, T: Tag, S: Simulation<NP, T>, FS: Fn() -> S> {
