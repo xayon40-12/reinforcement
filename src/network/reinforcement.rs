@@ -1,3 +1,5 @@
+use std::f64::consts::PI;
+
 use array_vector_space::ArrayVectorSpace;
 use rand_distr::Distribution;
 
@@ -48,12 +50,16 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
         self.network.randomize();
         self.score_network.randomize();
     }
-    fn normal_forward(&mut self, input: [Float; NI], sigma: Float) -> [Float; NO] {
-        let probabilities = self.network.forward(input);
+    fn normal_forward(
+        &mut self,
+        input: [Float; NI],
+        sigma: Float,
+    ) -> ([Float; NO], [Float; NO], Float) {
+        let means = self.network.forward(input);
         let ranges = self.network.output_ranges();
         let target: [Float; NO] = std::array::from_fn(|i| {
             let (min, max) = ranges[i];
-            let p = probabilities[i];
+            let p = means[i];
             let nr = 10.0 * sigma; // NOTE: use to clamp to 10 sigma to avoid infinities
             let min = min.unwrap_or(Float::NEG_INFINITY).max(p - nr);
             let max = max.unwrap_or(Float::INFINITY).min(p + nr);
@@ -62,10 +68,23 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
                 .sample(&mut rand::rng())
                 .clamp(min, max)
         });
-        self.network
-            .update_gradient(self.relaxation, target.sub(probabilities));
-        target
+        self.network.update_gradient(
+            self.relaxation,
+            target.sub(means).scal_mul(sigma.powi(2).recip()),
+        );
+        (
+            target,
+            means,
+            target
+                .iter()
+                .zip(means.iter())
+                .map(|(&x, &mean)| gaussian(x, mean, sigma))
+                .fold(1.0, |a, x| a * x),
+        )
     }
+}
+fn gaussian(x: Float, mean: Float, sigma: Float) -> Float {
+    (-((x - mean) / sigma).powi(2)).exp() / (sigma * (PI as Float * 2.0).sqrt())
 }
 
 impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, OutA = Id>> Reinforce
@@ -92,7 +111,8 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
                 let mut total_score = 0.0;
                 let [prediction_score] = net.score_network.forward(ctx_to_action_in(ctx));
                 for _ in 0..max_iter {
-                    let action = net.normal_forward(ctx_to_action_in(ctx), meta_parameters.sigma);
+                    let (action, _means, _probability) =
+                        net.normal_forward(ctx_to_action_in(ctx), meta_parameters.sigma);
                     let (step_score, done) = physics_cost(ctx, action);
                     total_score += step_score;
                     if done {
