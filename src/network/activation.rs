@@ -36,14 +36,14 @@ impl Activation for Relu {
 pub struct SigmoidSim;
 impl Activation for SigmoidSim {
     fn apply(&self, input: Float) -> Float {
-        2.0 * (1.0 + (-input).exp()).recip() - 1.0
+        2.0 * (1.0 + (-0.5 * input).exp()).recip() - 1.0
     }
     fn derivative(&self, input: Float) -> Float {
-        let e = (-input).exp();
+        let e = (-0.5 * input).exp();
         if e.is_infinite() || e.is_nan() {
             0.0
         } else {
-            2.0 * e / (1.0 + e).powi(2)
+            e / (1.0 + e).powi(2)
         }
     }
     fn range(&self) -> (Option<Float>, Option<Float>) {
