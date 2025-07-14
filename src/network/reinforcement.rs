@@ -68,19 +68,16 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
                 .sample(&mut rand::rng())
                 .clamp(min, max)
         });
+        let proba = target
+            .iter()
+            .zip(means.iter())
+            .map(|(&x, &mean)| gaussian(x, mean, sigma))
+            .fold(1.0, |a, x| a * x);
         self.network.update_gradient(
             self.relaxation,
-            target.sub(means).scal_mul(sigma.powi(2).recip()),
+            target.sub(means).scal_mul(proba * sigma.powi(2).recip()),
         );
-        (
-            target,
-            means,
-            target
-                .iter()
-                .zip(means.iter())
-                .map(|(&x, &mean)| gaussian(x, mean, sigma))
-                .fold(1.0, |a, x| a * x),
-        )
+        (target, means, proba)
     }
 }
 fn gaussian(x: Float, mean: Float, sigma: Float) -> Float {
