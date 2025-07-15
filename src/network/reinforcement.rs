@@ -81,7 +81,7 @@ impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, Out
     }
 }
 fn gaussian(x: Float, mean: Float, sigma: Float) -> Float {
-    (-((x - mean) / sigma).powi(2)).exp() / (sigma * (PI as Float * 2.0).sqrt())
+    (-0.5 * ((x - mean) / sigma).powi(2)).exp() / (sigma * (PI as Float * 2.0).sqrt())
 }
 
 impl<const NI: usize, const NO: usize, N: Network<NI, NO>, S: Network<NI, 1, OutA = Id>> Reinforce
