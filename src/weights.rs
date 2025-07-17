@@ -8,7 +8,7 @@ use num::{Float, traits::FloatConst};
 use rand::Rng;
 use rand_distr::{
     Distribution, StandardNormal,
-    uniform::{SampleBorrow, SampleUniform, UniformSampler},
+    uniform::{SampleBorrow, SampleUniform},
 };
 
 //FIXME: add proper debug_assert for all the methods here
@@ -18,7 +18,6 @@ pub trait Weights<T: Float> {
     fn empty_weights(&self) -> Box<[T]> {
         vec![T::zero(); self.weights_len()].into_boxed_slice()
     }
-    //TODO: add a randomize function
 }
 pub trait Eval<T: Float>: Weights<T> {
     fn state_len(&self) -> usize;
@@ -198,6 +197,70 @@ impl<T: Float> Activation<T> for ReLu {
         (Some(T::zero()), None)
     }
 }
+// ==================================================================
+
+pub struct Id {
+    inputs: usize,
+}
+impl Id {
+    pub fn new(inputs: usize) -> Self {
+        Id { inputs }
+    }
+    pub fn layer<T: Float>(inputs: usize) -> (usize, Box<dyn Activation<T>>) {
+        (inputs, Box::new(Id { inputs }))
+    }
+}
+impl<T: Float> Weights<T> for Id {
+    fn weights_len(&self) -> usize {
+        0
+    }
+}
+impl<T: Float> Eval<T> for Id {
+    fn state_len(&self) -> usize {
+        self.inputs
+    }
+    fn eval(&self, input: &[T], weights: &[T], state: &mut [T]) {
+        debug_assert!(
+            input.len() == self.inputs && weights.len() == 0 && state.len() == self.inputs
+        );
+        state
+            .iter_mut()
+            .zip(input.iter())
+            .for_each(|(s, i)| *s = *i);
+    }
+    fn output<'a>(&self, state: &'a [T]) -> &'a [T] {
+        debug_assert!(state.len() == self.inputs);
+        state
+    }
+}
+impl<T: Float> BackProp<T> for Id {
+    fn back_prop(
+        &self,
+        input: &[T],
+        weights: &[T],
+        state: &[T],
+        front: &mut [T],
+        back: &[T],
+        gradient: &mut [T],
+    ) {
+        debug_assert!(input.len() == self.inputs, "Id input");
+        debug_assert!(weights.len() == 0, "Id, weights");
+        debug_assert!(state.len() == self.inputs, "Id state");
+        debug_assert!(gradient.len() == 0, "Id gradient");
+        debug_assert!(front.len() == self.inputs, "Id front");
+        debug_assert!(back.len() == self.inputs, "Id back");
+        front
+            .iter_mut()
+            .zip(input.iter())
+            .zip(back.iter())
+            .for_each(|((f, _i), b)| *f = *b);
+    }
+}
+impl<T: Float> Activation<T> for Id {
+    fn range(&self) -> (Option<T>, Option<T>) {
+        (None, None)
+    }
+}
 
 // ==================================================================
 
@@ -282,15 +345,19 @@ impl<T: Float> BackProp<T> for MLP<T> {
         back: &[T],
         gradient: &mut [T],
     ) {
+        debug_assert!(input.len() == self.layers[0].0.inputs, "MLP input");
+        debug_assert!(weights.len() == self.weights_len(), "MLP weigths");
+        debug_assert!(state.len() == self.state_len(), "MLP state");
+        debug_assert!(gradient.len() == self.weights_len(), "MLP gradient");
         debug_assert!(
-            input.len() == self.layers[0].0.inputs
-                && weights.len() == self.weights_len()
-                && state.len() == self.state_len()
-                && gradient.len() == self.weights_len()
-                && (outer_front.len() == self.layers[0].0.inputs || outer_front.len() == 0)
-                && back.len() == self.layers[self.layers.len() - 1].0.outputs,
-            "MLP"
+            (outer_front.len() == self.layers[0].0.inputs || outer_front.len() == 0),
+            "MLP front"
         );
+        debug_assert!(
+            back.len() == self.layers[self.layers.len() - 1].0.outputs,
+            "MLP back"
+        );
+
         let mut gradients = Vec::with_capacity(self.layers.len());
         let mut weightss = Vec::with_capacity(self.layers.len());
         let mut gradient = &mut *gradient;
@@ -487,8 +554,10 @@ impl<T: Float> Trainer<T> {
             for &(inputs, targets) in training_data.iter() {
                 self.mlp.eval(inputs, &self.weights, &mut self.state);
                 let outputs = self.mlp.output(&self.state);
-                if i % (iterations / 10) == 0 {
-                    print!("{outputs:?} ");
+                if cfg!(debug_assertions) {
+                    if i % (iterations / 10) == 0 {
+                        print!("{outputs:?} ");
+                    }
                 }
                 let delta = targets
                     .iter()
@@ -504,16 +573,15 @@ impl<T: Float> Trainer<T> {
                     &delta,
                     &mut self.gradient,
                 );
-                if i % (iterations / 10) == 0 {
-                    print!("{:?} ", self.gradient);
-                }
                 self.weights
                     .iter_mut()
                     .zip(self.gradient.iter())
                     .for_each(|(w, g)| *w = *w + alpha * *g);
             }
-            if i % (iterations / 10) == 0 {
-                println!("\n{i:<align$}: error = {:.1e}", error.sqrt());
+            if cfg!(debug_assertions) {
+                if i % (iterations / 10) == 0 {
+                    println!("\n{i:<align$}: error = {:.1e}", error.sqrt());
+                }
             }
         }
     }
