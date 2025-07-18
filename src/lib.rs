@@ -1,3 +1,3 @@
 pub mod network;
 pub mod simulation;
-pub mod weights;
+pub mod training;
