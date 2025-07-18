@@ -28,8 +28,11 @@ impl<T: Float> MLP<T> {
             .iter()
             .fold(self.layers[0].0.inputs(), |a, l| a.max(l.0.outputs()))
     }
-    pub fn layers(&self) -> &[(LayerMatrix<T>, Box<dyn Activation<T>>)] {
-        &self.layers
+    pub fn input_len(&self) -> usize {
+        self.layers[0].0.inputs()
+    }
+    pub fn output_len(&self) -> usize {
+        self.layers[self.layers.len() - 1].0.outputs()
     }
 }
 

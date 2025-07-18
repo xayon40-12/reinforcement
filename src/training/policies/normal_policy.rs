@@ -19,16 +19,13 @@ where
         NormalPolicy { mlp, sigma }
     }
     pub fn input_len(&self) -> usize {
-        self.mlp.layers()[0].0.inputs()
+        self.mlp.input_len()
     }
     pub fn output_len(&self) -> usize {
-        self.mlp.layers()[0].0.outputs()
-    }
-    pub fn back_front_len(&self) -> usize {
-        self.mlp.min_back_front_len()
+        self.mlp.output_len()
     }
     pub fn action<'a>(&self, state: &'a [T]) -> &'a [T] {
-        &state[self.state_len() + 2 * self.back_front_len()..]
+        &state[self.state_len() + 2 * self.mlp.min_back_front_len()..]
     }
 }
 
@@ -45,7 +42,7 @@ where
     StandardNormal: Distribution<T>,
 {
     fn state_len(&self) -> usize {
-        self.mlp.state_len() + 2 * self.back_front_len() + self.output_len()
+        self.mlp.state_len() + 2 * self.mlp.min_back_front_len() + self.output_len()
     }
 
     fn eval(&self, input: &[T], weights: &[T], state: &mut [T]) {
@@ -64,8 +61,8 @@ where
     fn compute_gradient(&self, input: &[T], weights: &[T], state: &mut [T], gradient: &mut [T]) {
         let probability = self.probability(state);
         let (state, tmp) = state.split_at_mut(self.mlp.state_len());
-        let (back, tmp) = tmp.split_at_mut(self.back_front_len());
-        let (front, _action_state) = tmp.split_at_mut(self.back_front_len());
+        let (back, tmp) = tmp.split_at_mut(self.mlp.min_back_front_len());
+        let (front, _action_state) = tmp.split_at_mut(self.mlp.min_back_front_len());
         back.iter_mut()
             .zip(self.output(state).iter())
             .zip(self.action(state))
@@ -87,7 +84,7 @@ where
     fn stochastic_eval(&self, input: &[T], weights: &[T], state: &mut [T]) {
         self.eval(input, weights, state);
         let (state, tmp) = state.split_at_mut(self.mlp.state_len());
-        let (_back_front, action_state) = tmp.split_at_mut(2 * self.back_front_len());
+        let (_back_front, action_state) = tmp.split_at_mut(2 * self.mlp.min_back_front_len());
         let means = self.mlp.output(state);
         let (min, max) = self.mlp.output_range();
         let limit = T::from(10.0).unwrap() * self.sigma; // NOTE: use to clamp to 10 sigma to avoid infinities
