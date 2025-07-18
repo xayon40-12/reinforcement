@@ -3,6 +3,7 @@ use num::Float;
 pub mod activations;
 pub mod layer_matrix;
 pub mod mlp;
+pub mod optimizers;
 pub mod policies;
 pub mod trainer;
 
@@ -43,4 +44,8 @@ pub trait StochasticPolicy<T: Float>: Gradient<T> {
 
 pub trait Activation<T: Float>: BackProp<T> {
     fn range(&self) -> (Option<T>, Option<T>);
+}
+
+pub trait Optimizer<T: Float> {
+    fn step(&mut self, weights: &mut [T], gradient: &mut [T]);
 }
