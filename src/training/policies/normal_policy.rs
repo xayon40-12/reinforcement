@@ -25,7 +25,7 @@ where
         self.mlp.output_len()
     }
     pub fn action<'a>(&self, state: &'a [T]) -> &'a [T] {
-        &state[self.state_len() + 2 * self.mlp.min_back_front_len()..]
+        &state[self.state_len() - self.output_len()..]
     }
 }
 
@@ -62,10 +62,10 @@ where
         let probability = self.probability(state);
         let (state, tmp) = state.split_at_mut(self.mlp.state_len());
         let (back, tmp) = tmp.split_at_mut(self.mlp.min_back_front_len());
-        let (front, _action_state) = tmp.split_at_mut(self.mlp.min_back_front_len());
+        let (front, action_state) = tmp.split_at_mut(self.mlp.min_back_front_len());
         back.iter_mut()
-            .zip(self.output(state).iter())
-            .zip(self.action(state))
+            .zip(self.mlp.output(state).iter())
+            .zip(action_state.iter())
             .for_each(|((b, &m), &a)| *b = (a - m) / self.sigma.powi(2) * probability);
         self.mlp
             .back_prop(input, weights, state, front, back, gradient);

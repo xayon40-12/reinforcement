@@ -1,6 +1,9 @@
 use std::process::exit;
 
-use reinforcement::simulation::{acceleration::Acceleration, with_egui};
+use reinforcement::{
+    simulation::{acceleration::Acceleration, with_egui},
+    training::tests::test_policy_adam,
+};
 
 fn main() {
     if cfg!(debug_assertions) {
@@ -25,6 +28,7 @@ fn main() {
             ],
         );
         test_value_adam();
+        test_policy_adam();
 
         exit(0);
     }

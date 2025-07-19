@@ -68,6 +68,10 @@ pub struct TimeStep<'a, T: Float> {
     pub state: &'a mut [T],
 }
 
+pub enum Direction {
+    Ascent,
+    Descent,
+}
 pub trait Optimizer<T: Float> {
     /// This function is supposed to perform gradient descent
     fn step(&mut self, weights: &mut [T], gradient: &mut [T]);
@@ -80,10 +84,13 @@ pub trait Optimizer<T: Float> {
         gradient: &mut [T],
         tmp_gradient: &mut [T],
         time_steps: &mut [TimeStep<T>],
-        descent: bool,
+        direction: Direction,
     ) {
         debug_assert!(minibatch_size > 0, "minibatch size must be positive");
-        let ascent_sign = if descent { T::one() } else { -T::one() };
+        let ascent_sign = match direction {
+            Direction::Ascent => -T::one(),
+            Direction::Descent => T::one(),
+        };
 
         let mut rng = rand::rng();
 
