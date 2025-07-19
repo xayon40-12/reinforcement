@@ -31,7 +31,17 @@ impl<T: Float> Eval<T> for ReLu {
             .zip(input.iter())
             .for_each(|(s, i)| *s = i.max(T::zero()));
     }
+    fn input_len(&self) -> usize {
+        self.inputs
+    }
+    fn output_len(&self) -> usize {
+        self.inputs
+    }
     fn output<'a>(&self, state: &'a [T]) -> &'a [T] {
+        debug_assert!(state.len() == self.inputs);
+        state
+    }
+    fn output_mut<'a>(&self, state: &'a mut [T]) -> &'a mut [T] {
         debug_assert!(state.len() == self.inputs);
         state
     }

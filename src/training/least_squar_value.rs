@@ -28,8 +28,17 @@ impl<T: Float> Eval<T> for LeastSquareValue<T> {
         self.mlp
             .eval(input, weights, &mut state[..self.mlp.state_len()]);
     }
+    fn input_len(&self) -> usize {
+        self.mlp.input_len()
+    }
+    fn output_len(&self) -> usize {
+        self.mlp.output_len()
+    }
     fn output<'a>(&self, state: &'a [T]) -> &'a [T] {
         self.mlp.output(&state[..self.mlp.state_len()])
+    }
+    fn output_mut<'a>(&self, state: &'a mut [T]) -> &'a mut [T] {
+        self.mlp.output_mut(&mut state[..self.mlp.state_len()])
     }
 }
 impl<T: Float> Gradient<T> for LeastSquareValue<T> {

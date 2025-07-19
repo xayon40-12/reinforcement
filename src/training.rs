@@ -5,6 +5,7 @@ pub mod activations;
 pub mod layer_matrix;
 pub mod least_squar_value;
 pub mod mlp;
+pub mod ops;
 pub mod optimizers;
 pub mod policies;
 pub mod tests;
@@ -19,7 +20,10 @@ pub trait Weights<T: Float> {
 pub trait Eval<T: Float>: Weights<T> {
     fn state_len(&self) -> usize;
     fn eval(&self, input: &[T], weights: &[T], state: &mut [T]);
+    fn input_len(&self) -> usize;
+    fn output_len(&self) -> usize;
     fn output<'a>(&self, state: &'a [T]) -> &'a [T];
+    fn output_mut<'a>(&self, state: &'a mut [T]) -> &'a mut [T];
     fn empty_state(&self) -> Box<[T]> {
         vec![T::zero(); self.state_len()].into_boxed_slice()
     }
@@ -42,10 +46,7 @@ pub trait Gradient<T: Float>: Eval<T> {
     /// Also, it is not supposed to call eval, but instead call output.
     fn compute_gradient(&self, input: &[T], weights: &[T], state: &mut [T], gradient: &mut [T]);
 }
-pub trait Policy<T: Float> {
-    fn input_len(&self) -> usize;
-    fn output_len(&self) -> usize;
-}
+pub trait Policy<T: Float> {}
 /// It is `Gradient` with respect to the scalar probability
 pub trait StochasticPolicy<T: Float>: Gradient<T> {
     fn probability(&self, state: &[T]) -> T;

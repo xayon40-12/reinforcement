@@ -51,7 +51,17 @@ impl<T: Float> Eval<T> for LayerMatrix<T> {
                     .fold(ws[0], |acc, (&w, &i)| acc + w * i)
             })
     }
+    fn input_len(&self) -> usize {
+        self.inputs
+    }
+    fn output_len(&self) -> usize {
+        self.outputs
+    }
     fn output<'a>(&self, state: &'a [T]) -> &'a [T] {
+        debug_assert!(state.len() == self.outputs);
+        state
+    }
+    fn output_mut<'a>(&self, state: &'a mut [T]) -> &'a mut [T] {
         debug_assert!(state.len() == self.outputs);
         state
     }

@@ -28,12 +28,6 @@ impl<T: Float> MLP<T> {
             .iter()
             .fold(self.layers[0].0.inputs(), |a, l| a.max(l.0.outputs()))
     }
-    pub fn input_len(&self) -> usize {
-        self.layers[0].0.inputs()
-    }
-    pub fn output_len(&self) -> usize {
-        self.layers[self.layers.len() - 1].0.outputs()
-    }
 }
 
 impl<T: Float> Weights<T> for MLP<T> {
@@ -79,9 +73,19 @@ impl<T: Float> Eval<T> for MLP<T> {
             (input, state) = state.split_at_mut(a.state_len());
         }
     }
+    fn input_len(&self) -> usize {
+        self.layers[0].0.inputs()
+    }
+    fn output_len(&self) -> usize {
+        self.layers[self.layers.len() - 1].0.outputs()
+    }
     fn output<'a>(&self, state: &'a [T]) -> &'a [T] {
         debug_assert!(state.len() == self.state_len());
         &state[self.state_len() - self.layers[self.layers.len() - 1].0.state_len()..]
+    }
+    fn output_mut<'a>(&self, state: &'a mut [T]) -> &'a mut [T] {
+        debug_assert!(state.len() == self.state_len());
+        &mut state[self.state_len() - self.layers[self.layers.len() - 1].0.state_len()..]
     }
 }
 impl<T: Float> BackProp<T> for MLP<T> {
