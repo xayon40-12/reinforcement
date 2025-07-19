@@ -7,6 +7,7 @@ pub mod least_squar_value;
 pub mod mlp;
 pub mod optimizers;
 pub mod policies;
+pub mod tests;
 pub mod trainer;
 
 pub trait Weights<T: Float> {
@@ -37,7 +38,8 @@ pub trait BackProp<T: Float>: Eval<T> {
     );
 }
 pub trait Gradient<T: Float>: Eval<T> {
-    /// This function is supposed to completely overwrite the gradient, not add to it
+    /// This function is supposed to completely overwrite the gradient, not add to it.
+    /// Also, it is not supposed to call eval, but instead call output.
     fn compute_gradient(&self, input: &[T], weights: &[T], state: &mut [T], gradient: &mut [T]);
 }
 pub trait Policy<T: Float> {
@@ -92,6 +94,7 @@ pub trait Optimizer<T: Float> {
             for minibatch in time_steps.chunks_exact_mut(minibatch_size) {
                 gradient.iter_mut().for_each(|g| *g = T::zero());
                 for TimeStep { input, state } in minibatch {
+                    to_optimize.eval(input, weights, state);
                     to_optimize.compute_gradient(input, weights, state, tmp_gradient);
                     gradient
                         .iter_mut()

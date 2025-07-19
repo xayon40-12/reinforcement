@@ -149,9 +149,6 @@ impl<T: Float> BackProp<T> for MLP<T> {
                 );
                 l.0.back_prop(&i[0], ws, &s[0], &mut back[..il0], &mut front[..il1], g);
             });
-        front
-            .iter_mut()
-            .zip(back.iter())
-            .for_each(|(of, f)| *of = *f);
+        front.iter_mut().zip(back.iter()).for_each(|(f, b)| *f = *b);
     }
 }

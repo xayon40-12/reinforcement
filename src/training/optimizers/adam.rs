@@ -26,6 +26,10 @@ impl<T: Float> Adam<T> {
             moment_2: vec![T::zero(); weights_len].into_boxed_slice(),
         }
     }
+    pub fn with_alpha(mut self, alpha: T) -> Self {
+        self.alpha = alpha;
+        self
+    }
     pub fn with_parameters(mut self, alpha: T, beta_1: T, beta_2: T, epsilon: T) -> Self {
         self.alpha = alpha;
         self.beta_1 = beta_1;
@@ -35,7 +39,7 @@ impl<T: Float> Adam<T> {
     }
 }
 
-impl<T: Float> Optimizer<T> for Adam<T> {
+impl<T: Float + std::fmt::Display> Optimizer<T> for Adam<T> {
     fn step(&mut self, weights: &mut [T], gradient: &mut [T]) {
         self.cumulated_beta_1 = self.cumulated_beta_1 * self.beta_1;
         self.cumulated_beta_2 = self.cumulated_beta_2 * self.beta_2;

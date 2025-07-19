@@ -2,7 +2,7 @@ use num::Float;
 
 use crate::training::Optimizer;
 
-pub struct Adam<T: Float> {
+pub struct AdaMax<T: Float> {
     alpha: T,
     beta_1: T,
     beta_2: T,
@@ -13,9 +13,9 @@ pub struct Adam<T: Float> {
     moment_inf: Box<[T]>,
 }
 
-impl<T: Float> Adam<T> {
+impl<T: Float> AdaMax<T> {
     pub fn new(weights_len: usize) -> Self {
-        Adam {
+        AdaMax {
             alpha: T::from(0.002).unwrap(),
             beta_1: T::from(0.9).unwrap(),
             beta_2: T::from(0.999).unwrap(),
@@ -35,7 +35,7 @@ impl<T: Float> Adam<T> {
     }
 }
 
-impl<T: Float> Optimizer<T> for Adam<T> {
+impl<T: Float> Optimizer<T> for AdaMax<T> {
     fn step(&mut self, weights: &mut [T], gradient: &mut [T]) {
         self.cumulated_beta_1 = self.cumulated_beta_1 * self.beta_1;
         self.cumulated_beta_2 = self.cumulated_beta_2 * self.beta_2;
